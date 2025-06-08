@@ -11,41 +11,25 @@
   "rebaseWhen": "behind-base-branch",
   "packageRules": [
     {
-      "description": "🚫 Never bump Python major",
+      "description": "🚫 Block Python updates beyond 3.12",
       "matchPackageNames": [
-        "python",
-        "python/**"
+        "python"
       ],
-      "matchManagers": [
-        "pip_requirements",
-        "dockerfile",
-        "docker-compose",
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
+      "allowedVersions": "<=3.12"
     },
     {
-      "description": "🚫 Pin CodeMirror to 5.x",
+      "description": "🚫 Stay on CodeMirror 5.x",
       "matchPackageNames": [
         "codemirror"
       ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
+      "allowedVersions": "<6.0.0"
     },
     {
-      "description": "🚫 Pin Tailwind to 2.x",
+      "description": "🚫 Stay on Tailwind CSS 2.x",
       "matchPackageNames": [
         "tailwindcss"
       ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
+      "allowedVersions": "<3.0.0"
     }
   ]
 }
