@@ -1,6 +1,51 @@
 {
-    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": [
-        "config:recommended"
-    ]
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":weekly"
+  ],
+  "prHourlyLimit": 1,
+  "prConcurrentLimit": 1,
+  "dependencyDashboard": true,
+  "prCreation": "not-pending",
+  "rebaseWhen": "behind-base-branch",
+  "packageRules": [
+    {
+      "description": "🚫 Never bump Python major",
+      "matchPackageNames": [
+        "python",
+        "python/**"
+      ],
+      "matchManagers": [
+        "pip_requirements",
+        "dockerfile",
+        "docker-compose",
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "🚫 Pin CodeMirror to 5.x",
+      "matchPackageNames": [
+        "codemirror"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "🚫 Pin Tailwind to 2.x",
+      "matchPackageNames": [
+        "tailwindcss"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    }
+  ]
 }
