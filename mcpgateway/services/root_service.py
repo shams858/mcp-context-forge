@@ -38,12 +38,26 @@ class RootService:
     """
 
     def __init__(self):
-        """Initialize root service."""
+        """Initialize root service.
+
+        Example:
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> isinstance(service, RootService)
+            True
+        """
         self._roots: Dict[str, Root] = {}
         self._subscribers: List[asyncio.Queue] = []
 
     async def initialize(self) -> None:
-        """Initialize root service."""
+        """Initialize root service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         logger.info("Initializing root service")
         # Add any configured default roots
         for root_uri in settings.default_roots:
@@ -53,7 +67,14 @@ class RootService:
                 logger.error(f"Failed to add default root {root_uri}: {e}")
 
     async def shutdown(self) -> None:
-        """Shutdown root service."""
+        """Shutdown root service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         logger.info("Shutting down root service")
         # Clear all roots and subscribers
         self._roots.clear()
@@ -64,6 +85,12 @@ class RootService:
 
         Returns:
             List of registered roots
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> asyncio.run(service.list_roots())  # doctest: +SKIP
         """
         return list(self._roots.values())
 
@@ -79,6 +106,12 @@ class RootService:
 
         Raises:
             RootServiceError: If root is invalid or already exists
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> asyncio.run(service.add_root('file:///tmp'))  # doctest: +SKIP
         """
         try:
             root_uri = self._make_root_uri(uri)
@@ -107,6 +140,12 @@ class RootService:
 
         Raises:
             RootServiceError: If root not found
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> asyncio.run(service.remove_root('file:///tmp'))  # doctest: +SKIP
         """
         if root_uri not in self._roots:
             raise RootServiceError(f"Root not found: {root_uri}")
@@ -119,6 +158,14 @@ class RootService:
 
         Yields:
             Root change events
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> async def get_one():
+            ...     gen = service.subscribe_changes()
+            ...     return await gen.__anext__()  # doctest: +SKIP
         """
         queue: asyncio.Queue = asyncio.Queue()
         self._subscribers.append(queue)
@@ -139,6 +186,14 @@ class RootService:
 
         Returns:
             A valid URI string
+
+        Example:
+            >>> from mcpgateway.services.root_service import RootService
+            >>> service = RootService()
+            >>> service._make_root_uri('/tmp')
+            'file:///tmp'
+            >>> service._make_root_uri('http://example.com')
+            'http://example.com'
         """
         parsed = urlparse(uri)
         if not parsed.scheme:

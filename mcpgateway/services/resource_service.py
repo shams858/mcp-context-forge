@@ -89,7 +89,14 @@ class ResourceService:
     """
 
     def __init__(self):
-        """Initialize the resource service."""
+        """Initialize the resource service.
+
+        Example:
+            >>> from mcpgateway.services.resource_service import ResourceService
+            >>> service = ResourceService()
+            >>> isinstance(service, ResourceService)
+            True
+        """
         self._event_subscribers: Dict[str, List[asyncio.Queue]] = {}
         self._template_cache: Dict[str, ResourceTemplate] = {}
 
@@ -97,11 +104,25 @@ class ResourceService:
         mimetypes.init()
 
     async def initialize(self) -> None:
-        """Initialize the service."""
+        """Initialize the service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.resource_service import ResourceService
+            >>> service = ResourceService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         logger.info("Initializing resource service")
 
     async def shutdown(self) -> None:
-        """Shutdown the service."""
+        """Shutdown the service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.resource_service import ResourceService
+            >>> service = ResourceService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         # Clear subscriptions
         self._event_subscribers.clear()
         logger.info("Resource service shutdown complete")
@@ -156,6 +177,16 @@ class ResourceService:
         Raises:
             ResourceURIConflictError: If resource URI already exists
             ResourceError: For other resource registration errors
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.resource_service import ResourceService
+            >>> from mcpgateway.schemas import ResourceCreate
+            >>> db = MagicMock()
+            >>> resource = ResourceCreate(uri='file://test.txt', name='test', content='data')
+            >>> service = ResourceService()
+            >>> asyncio.run(service.register_resource(db, resource))  # doctest: +SKIP
         """
         try:
             # Check for URI conflicts (both active and inactive)
@@ -207,8 +238,7 @@ class ResourceService:
             raise ResourceError(f"Failed to register resource: {str(e)}")
 
     async def list_resources(self, db: Session, include_inactive: bool = False) -> List[ResourceRead]:
-        """
-        Retrieve a list of registered resources from the database.
+        """Retrieve a list of registered resources from the database.
 
         This method retrieves resources from the database and converts them into a list
         of ResourceRead objects. It supports filtering out inactive resources based on the
@@ -222,6 +252,14 @@ class ResourceService:
 
         Returns:
             List[ResourceRead]: A list of resources represented as ResourceRead objects.
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.resource_service import ResourceService
+            >>> db = MagicMock()
+            >>> service = ResourceService()
+            >>> asyncio.run(service.list_resources(db))  # doctest: +SKIP
         """
         query = select(DbResource)
         if not include_inactive:

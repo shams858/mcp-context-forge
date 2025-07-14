@@ -65,15 +65,37 @@ class ServerService:
     """
 
     def __init__(self) -> None:
+        """Initialize the server service.
+
+        Example:
+            >>> from mcpgateway.services.server_service import ServerService
+            >>> service = ServerService()
+            >>> isinstance(service, ServerService)
+            True
+        """
         self._event_subscribers: List[asyncio.Queue] = []
         self._http_client = httpx.AsyncClient(timeout=settings.federation_timeout, verify=not settings.skip_ssl_verify)
 
     async def initialize(self) -> None:
-        """Initialize the server service."""
+        """Initialize the server service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.server_service import ServerService
+            >>> service = ServerService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         logger.info("Initializing server service")
 
     async def shutdown(self) -> None:
-        """Shutdown the server service."""
+        """Shutdown the server service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.server_service import ServerService
+            >>> service = ServerService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         await self._http_client.aclose()
         logger.info("Server service shutdown complete")
 
@@ -139,8 +161,7 @@ class ServerService:
         }
 
     async def register_server(self, db: Session, server_in: ServerCreate) -> ServerRead:
-        """
-        Register a new server in the catalog and validate that all associated items exist.
+        """Register a new server in the catalog and validate that all associated items exist.
 
         This function performs the following steps:
         1. Checks if a server with the same name already exists.
@@ -164,6 +185,16 @@ class ServerService:
             ServerNameConflictError: If a server with the same name already exists.
             ServerError: If any associated tool, resource, or prompt does not exist, or if any other
                         registration error occurs.
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.server_service import ServerService
+            >>> from mcpgateway.schemas import ServerCreate
+            >>> db = MagicMock()
+            >>> server_in = ServerCreate(name='test', description='desc', icon=None, associated_tools=[], associated_resources=[], associated_prompts=[])
+            >>> service = ServerService()
+            >>> asyncio.run(service.register_server(db, server_in))  # doctest: +SKIP
         """
         try:
             # Check for an existing server with the same name.

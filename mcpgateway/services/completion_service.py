@@ -39,15 +39,36 @@ class CompletionService:
     """
 
     def __init__(self):
-        """Initialize completion service."""
+        """Initialize completion service.
+
+        Example:
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> service = CompletionService()
+            >>> isinstance(service, CompletionService)
+            True
+        """
         self._custom_completions: Dict[str, List[str]] = {}
 
     async def initialize(self) -> None:
-        """Initialize completion service."""
+        """Initialize completion service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> service = CompletionService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         logger.info("Initializing completion service")
 
     async def shutdown(self) -> None:
-        """Shutdown completion service."""
+        """Shutdown completion service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> service = CompletionService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         logger.info("Shutting down completion service")
         self._custom_completions.clear()
 
@@ -63,6 +84,15 @@ class CompletionService:
 
         Raises:
             CompletionError: If completion fails
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> db = MagicMock()
+            >>> request = {'ref': {'type': 'ref/prompt', 'name': 'test'}, 'argument': {'name': 'arg', 'value': ''}}
+            >>> service = CompletionService()
+            >>> asyncio.run(service.handle_completion(db, request))  # doctest: +SKIP
         """
         try:
             # Get reference and argument info
@@ -191,6 +221,13 @@ class CompletionService:
         Args:
             arg_name: Argument name
             values: Completion values
+
+        Example:
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> service = CompletionService()
+            >>> service.register_completions('color', ['red', 'green', 'blue'])
+            >>> 'color' in service._custom_completions
+            True
         """
         self._custom_completions[arg_name] = list(values)
 
@@ -199,5 +236,13 @@ class CompletionService:
 
         Args:
             arg_name: Argument name
+
+        Example:
+            >>> from mcpgateway.services.completion_service import CompletionService
+            >>> service = CompletionService()
+            >>> service.register_completions('color', ['red', 'green'])
+            >>> service.unregister_completions('color')
+            >>> 'color' in service._custom_completions
+            False
         """
         self._custom_completions.pop(arg_name, None)

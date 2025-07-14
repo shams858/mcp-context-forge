@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import logging
 import os
 import tempfile
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 import uuid
 
 # Third-Party
@@ -103,7 +103,14 @@ class GatewayService:
     """
 
     def __init__(self) -> None:
-        """Initialize the gateway service."""
+        """Initialize the gateway service.
+
+        Example:
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> service = GatewayService()
+            >>> isinstance(service, GatewayService)
+            True
+        """
         self._event_subscribers: List[asyncio.Queue] = []
         self._http_client = httpx.AsyncClient(timeout=settings.federation_timeout, verify=not settings.skip_ssl_verify)
         self._health_check_interval = GW_HEALTH_CHECK_INTERVAL
@@ -141,6 +148,12 @@ class GatewayService:
 
         Raises:
             ConnectionError: When redis ping fails
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> service = GatewayService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
         """
         logger.info("Initializing gateway service")
 
@@ -159,7 +172,14 @@ class GatewayService:
             self._health_check_task = asyncio.create_task(self._run_health_checks())
 
     async def shutdown(self) -> None:
-        """Shutdown the service."""
+        """Shutdown the service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> service = GatewayService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         if self._health_check_task:
             self._health_check_task.cancel()
             try:
@@ -188,6 +208,16 @@ class GatewayService:
             ValueError: If required values are missing
             RuntimeError: If there is an error during processing that is not covered by other exceptions
             BaseException: If an unexpected error occurs
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> from mcpgateway.schemas import GatewayCreate
+            >>> db = MagicMock()
+            >>> gateway = GatewayCreate(name='test', url='http://localhost', transport='SSE')
+            >>> service = GatewayService()
+            >>> asyncio.run(service.register_gateway(db, gateway))  # doctest: +SKIP
         """
         try:
             # Check for name conflicts (both active and inactive)
@@ -249,26 +279,18 @@ class GatewayService:
             await self._notify_gateway_added(db_gateway)
 
             return GatewayRead.model_validate(gateway)
-        except* GatewayConnectionError as ge:
-            if TYPE_CHECKING:
-                ge: ExceptionGroup[GatewayConnectionError]
-            logger.error(f"GatewayConnectionError in group: {ge.exceptions}")
-            raise ge.exceptions[0]
-        except* ValueError as ve:
-            if TYPE_CHECKING:
-                ve: ExceptionGroup[ValueError]
-            logger.error(f"ValueErrors in group: {ve.exceptions}")
-            raise ve.exceptions[0]
-        except* RuntimeError as re:
-            if TYPE_CHECKING:
-                re: ExceptionGroup[RuntimeError]
-            logger.error(f"RuntimeErrors in group: {re.exceptions}")
-            raise re.exceptions[0]
-        except* BaseException as other:  # catches every other sub-exception
-            if TYPE_CHECKING:
-                other: ExceptionGroup[BaseException]
-            logger.error(f"Other grouped errors: {other.exceptions}")
-            raise other.exceptions[0]
+        except GatewayConnectionError as ge:
+            logger.error(f"GatewayConnectionError: {ge}")
+            raise ge
+        except ValueError as ve:
+            logger.error(f"ValueError: {ve}")
+            raise ve
+        except RuntimeError as re:
+            logger.error(f"RuntimeError: {re}")
+            raise re
+        except BaseException as other:
+            logger.error(f"Other errors: {other}")
+            raise other
 
     async def list_gateways(self, db: Session, include_inactive: bool = False) -> List[GatewayRead]:
         """List all registered gateways.
@@ -279,6 +301,14 @@ class GatewayService:
 
         Returns:
             List of registered gateways
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> db = MagicMock()
+            >>> service = GatewayService()
+            >>> asyncio.run(service.list_gateways(db))  # doctest: +SKIP
         """
         query = select(DbGateway)
 
@@ -288,14 +318,13 @@ class GatewayService:
         gateways = db.execute(query).scalars().all()
         return [GatewayRead.model_validate(g) for g in gateways]
 
-    async def update_gateway(self, db: Session, gateway_id: str, gateway_update: GatewayUpdate, include_inactive: bool = True) -> GatewayRead:
+    async def update_gateway(self, db: Session, gateway_id: str, gateway_update: GatewayUpdate) -> GatewayRead:
         """Update a gateway.
 
         Args:
             db: Database session
             gateway_id: Gateway ID to update
             gateway_update: Updated gateway data
-            include_inactive: Whether to include inactive gateways
 
         Returns:
             Updated gateway information
@@ -304,6 +333,14 @@ class GatewayService:
             GatewayNotFoundError: If gateway not found
             GatewayError: For other update errors
             GatewayNameConflictError: If gateway name conflict occurs
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.gateway_service import GatewayService
+            >>> db = MagicMock()
+            >>> service = GatewayService()
+            >>> asyncio.run(service.update_gateway(db, 'gwid', MagicMock()))  # doctest: +SKIP
         """
         try:
             # Find gateway
@@ -311,86 +348,88 @@ class GatewayService:
             if not gateway:
                 raise GatewayNotFoundError(f"Gateway not found: {gateway_id}")
 
-            if gateway.enabled or include_inactive:
-                # Check for name conflicts if name is being changed
-                if gateway_update.name is not None and gateway_update.name != gateway.name:
-                    existing_gateway = db.execute(select(DbGateway).where(DbGateway.name == gateway_update.name).where(DbGateway.id != gateway_id)).scalar_one_or_none()
+            if not gateway.enabled:
+                raise GatewayNotFoundError(f"Gateway '{gateway.name}' exists but is inactive")
 
-                    if existing_gateway:
-                        raise GatewayNameConflictError(
-                            gateway_update.name,
-                            enabled=existing_gateway.enabled,
-                            gateway_id=existing_gateway.id,
-                        )
+            # Check for name conflicts if name is being changed
+            if gateway_update.name is not None and gateway_update.name != gateway.name:
+                existing_gateway = db.execute(select(DbGateway).where(DbGateway.name == gateway_update.name).where(DbGateway.id != gateway_id)).scalar_one_or_none()
 
-                # Update fields if provided
-                if gateway_update.name is not None:
-                    gateway.name = gateway_update.name
-                    gateway.slug = slugify(gateway_update.name)
-                if gateway_update.url is not None:
-                    gateway.url = gateway_update.url
-                if gateway_update.description is not None:
-                    gateway.description = gateway_update.description
-                if gateway_update.transport is not None:
-                    gateway.transport = gateway_update.transport
+                if existing_gateway:
+                    raise GatewayNameConflictError(
+                        gateway_update.name,
+                        enabled=existing_gateway.enabled,
+                        gateway_id=existing_gateway.id,
+                    )
 
-                if getattr(gateway, "auth_type", None) is not None:
-                    gateway.auth_type = gateway_update.auth_type
+            # Update fields if provided
+            if gateway_update.name is not None:
+                gateway.name = gateway_update.name
+                gateway.slug = slugify(gateway_update.name)
+            if gateway_update.url is not None:
+                gateway.url = gateway_update.url
+            if gateway_update.description is not None:
+                gateway.description = gateway_update.description
+            if gateway_update.transport is not None:
+                gateway.transport = gateway_update.transport
 
-                    # if auth_type is not None and only then check auth_value
-                    if getattr(gateway, "auth_value", {}) != {}:
-                        gateway.auth_value = gateway_update.auth_value
+            if getattr(gateway, "auth_type", None) is not None:
+                gateway.auth_type = gateway_update.auth_type
 
-                # Try to reinitialize connection if URL changed
-                if gateway_update.url is not None:
-                    try:
-                        capabilities, tools = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport)
-                        new_tool_names = [tool.name for tool in tools]
+                # if auth_type is not None and only then check auth_value
+                if getattr(gateway, "auth_value", {}) != {}:
+                    gateway.auth_value = gateway_update.auth_value
 
-                        for tool in tools:
-                            existing_tool = db.execute(select(DbTool).where(DbTool.original_name == tool.name).where(DbTool.gateway_id == gateway_id)).scalar_one_or_none()
-                            if not existing_tool:
-                                gateway.tools.append(
-                                    DbTool(
-                                        original_name=tool.name,
-                                        original_name_slug=slugify(tool.name),
-                                        url=gateway.url,
-                                        description=tool.description,
-                                        integration_type=tool.integration_type,
-                                        request_type=tool.request_type,
-                                        headers=tool.headers,
-                                        input_schema=tool.input_schema,
-                                        jsonpath_filter=tool.jsonpath_filter,
-                                        auth_type=gateway.auth_type,
-                                        auth_value=gateway.auth_value,
-                                    )
+            # Try to reinitialize connection if URL changed
+            if gateway_update.url is not None:
+                try:
+                    capabilities, tools = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport)
+                    new_tool_names = [tool.name for tool in tools]
+
+                    for tool in tools:
+                        existing_tool = db.execute(select(DbTool).where(DbTool.original_name == tool.name).where(DbTool.gateway_id == gateway_id)).scalar_one_or_none()
+                        if not existing_tool:
+                            gateway.tools.append(
+                                DbTool(
+                                    original_name=tool.name,
+                                    original_name_slug=slugify(tool.name),
+                                    url=gateway.url,
+                                    description=tool.description,
+                                    integration_type=tool.integration_type,
+                                    request_type=tool.request_type,
+                                    headers=tool.headers,
+                                    input_schema=tool.input_schema,
+                                    jsonpath_filter=tool.jsonpath_filter,
+                                    auth_type=gateway.auth_type,
+                                    auth_value=gateway.auth_value,
                                 )
+                            )
 
-                        gateway.capabilities = capabilities
-                        gateway.tools = [tool for tool in gateway.tools if tool.original_name in new_tool_names]  # keep only still-valid rows
-                        gateway.last_seen = datetime.now(timezone.utc)
+                    gateway.capabilities = capabilities
+                    gateway.tools = [tool for tool in gateway.tools if tool.original_name in new_tool_names]  # keep only still-valid rows
+                    gateway.last_seen = datetime.now(timezone.utc)
 
-                        # Update tracking with new URL
-                        self._active_gateways.discard(gateway.url)
-                        self._active_gateways.add(gateway.url)
-                    except Exception as e:
-                        logger.warning(f"Failed to initialize updated gateway: {e}")
+                    # Update tracking with new URL
+                    self._active_gateways.discard(gateway.url)
+                    self._active_gateways.add(gateway.url)
+                except Exception as e:
+                    logger.warning(f"Failed to initialize updated gateway: {e}")
 
-                gateway.updated_at = datetime.now(timezone.utc)
-                db.commit()
-                db.refresh(gateway)
+            gateway.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(gateway)
 
-                # Notify subscribers
-                await self._notify_gateway_updated(gateway)
+            # Notify subscribers
+            await self._notify_gateway_updated(gateway)
 
-                logger.info(f"Updated gateway: {gateway.name}")
-                return GatewayRead.model_validate(gateway)
+            logger.info(f"Updated gateway: {gateway.name}")
+            return GatewayRead.model_validate(gateway)
 
         except Exception as e:
             db.rollback()
             raise GatewayError(f"Failed to update gateway: {str(e)}")
 
-    async def get_gateway(self, db: Session, gateway_id: str, include_inactive: bool = True) -> GatewayRead:
+    async def get_gateway(self, db: Session, gateway_id: str, include_inactive: bool = False) -> GatewayRead:
         """Get a specific gateway by ID.
 
         Args:
@@ -408,10 +447,10 @@ class GatewayService:
         if not gateway:
             raise GatewayNotFoundError(f"Gateway not found: {gateway_id}")
 
-        if gateway.enabled or include_inactive:
-            return GatewayRead.model_validate(gateway)
+        if not gateway.enabled and not include_inactive:
+            raise GatewayNotFoundError(f"Gateway '{gateway.name}' exists but is inactive")
 
-        raise GatewayNotFoundError(f"Gateway not found: {gateway_id}")
+        return GatewayRead.model_validate(gateway)
 
     async def toggle_gateway_status(self, db: Session, gateway_id: str, activate: bool, reachable: bool = True, only_update_reachable: bool = False) -> GatewayRead:
         """Toggle gateway active status.

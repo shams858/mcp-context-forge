@@ -80,23 +80,42 @@ class PromptService:
     """
 
     def __init__(self) -> None:
-        """
-        Initialize the prompt service.
+        """Initialize the prompt service.
 
         Sets up the Jinja2 environment for rendering prompt templates.
         Although these templates are rendered as JSON for the API, if the output is ever
         embedded into an HTML page, unescaped content could be exploited for cross-site scripting (XSS) attacks.
         Enabling autoescaping for 'html' and 'xml' templates via select_autoescape helps mitigate this risk.
+
+        Example:
+            >>> from mcpgateway.services.prompt_service import PromptService
+            >>> service = PromptService()
+            >>> isinstance(service, PromptService)
+            True
         """
         self._event_subscribers: List[asyncio.Queue] = []
         self._jinja_env = Environment(autoescape=select_autoescape(["html", "xml"]), trim_blocks=True, lstrip_blocks=True)
 
     async def initialize(self) -> None:
-        """Initialize the service."""
+        """Initialize the service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.prompt_service import PromptService
+            >>> service = PromptService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         logger.info("Initializing prompt service")
 
     async def shutdown(self) -> None:
-        """Shutdown the service."""
+        """Shutdown the service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.prompt_service import PromptService
+            >>> service = PromptService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         self._event_subscribers.clear()
         logger.info("Prompt service shutdown complete")
 
@@ -166,6 +185,16 @@ class PromptService:
         Raises:
             PromptNameConflictError: If prompt name already exists
             PromptError: For other prompt registration errors
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.prompt_service import PromptService
+            >>> from mcpgateway.schemas import PromptCreate
+            >>> db = MagicMock()
+            >>> prompt = PromptCreate(name='test', template='Hello, {name}!', arguments=[])
+            >>> service = PromptService()
+            >>> asyncio.run(service.register_prompt(db, prompt))  # doctest: +SKIP
         """
         try:
             # Check for name conflicts (both active and inactive)
@@ -224,8 +253,7 @@ class PromptService:
             raise PromptError(f"Failed to register prompt: {str(e)}")
 
     async def list_prompts(self, db: Session, include_inactive: bool = False, cursor: Optional[str] = None) -> List[PromptRead]:
-        """
-        Retrieve a list of prompt templates from the database.
+        """Retrieve a list of prompt templates from the database.
 
         This method retrieves prompt templates from the database and converts them into a list
         of PromptRead objects. It supports filtering out inactive prompts based on the
@@ -241,6 +269,14 @@ class PromptService:
 
         Returns:
             List[PromptRead]: A list of prompt templates represented as PromptRead objects.
+
+        Example:
+            >>> import asyncio
+            >>> from unittest.mock import MagicMock
+            >>> from mcpgateway.services.prompt_service import PromptService
+            >>> db = MagicMock()
+            >>> service = PromptService()
+            >>> asyncio.run(service.list_prompts(db))  # doctest: +SKIP
         """
         query = select(DbPrompt)
         if not include_inactive:

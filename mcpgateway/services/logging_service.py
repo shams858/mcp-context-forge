@@ -30,13 +30,27 @@ class LoggingService:
     """
 
     def __init__(self):
-        """Initialize logging service."""
+        """Initialize logging service.
+
+        Example:
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> service = LoggingService()
+            >>> isinstance(service, LoggingService)
+            True
+        """
         self._level = LogLevel.INFO
         self._subscribers: List[asyncio.Queue] = []
         self._loggers: Dict[str, logging.Logger] = {}
 
     async def initialize(self) -> None:
-        """Initialize logging service."""
+        """Initialize logging service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> service = LoggingService()
+            >>> asyncio.run(service.initialize())  # doctest: +SKIP
+        """
         # Configure root logger
         logging.basicConfig(
             level=logging.INFO,
@@ -46,7 +60,14 @@ class LoggingService:
         logging.info("Logging service initialized")
 
     async def shutdown(self) -> None:
-        """Shutdown logging service."""
+        """Shutdown logging service.
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> service = LoggingService()
+            >>> asyncio.run(service.shutdown())  # doctest: +SKIP
+        """
         # Clear subscribers
         self._subscribers.clear()
         logging.info("Logging service shutdown")
@@ -59,6 +80,14 @@ class LoggingService:
 
         Returns:
             Logger instance
+
+        Example:
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> service = LoggingService()
+            >>> logger = service.get_logger('mylogger')
+            >>> import logging
+            >>> isinstance(logger, logging.Logger)
+            True
         """
         if name not in self._loggers:
             logger = logging.getLogger(name)
@@ -78,6 +107,13 @@ class LoggingService:
 
         Args:
             level: New log level
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> from mcpgateway.models import LogLevel
+            >>> service = LoggingService()
+            >>> asyncio.run(service.set_level(LogLevel.DEBUG))  # doctest: +SKIP
         """
         self._level = level
 
@@ -95,6 +131,13 @@ class LoggingService:
             data: Log message data
             level: Log severity level
             logger_name: Optional logger name
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> from mcpgateway.models import LogLevel
+            >>> service = LoggingService()
+            >>> asyncio.run(service.notify('Test message', LogLevel.INFO))  # doctest: +SKIP
         """
         # Skip if below current level
         if not self._should_log(level):
@@ -131,6 +174,14 @@ class LoggingService:
 
         Yields:
             Log message events
+
+        Example:
+            >>> import asyncio
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> service = LoggingService()
+            >>> async def get_one():
+            ...     gen = service.subscribe()
+            ...     return await gen.__anext__()  # doctest: +SKIP
         """
         queue: asyncio.Queue = asyncio.Queue()
         self._subscribers.append(queue)
@@ -149,6 +200,14 @@ class LoggingService:
 
         Returns:
             True if should log
+
+        Example:
+            >>> from mcpgateway.services.logging_service import LoggingService
+            >>> from mcpgateway.models import LogLevel
+            >>> service = LoggingService()
+            >>> service.set_level(LogLevel.INFO)  # doctest: +SKIP
+            >>> service._should_log(LogLevel.ERROR)
+            True
         """
         level_values = {
             LogLevel.DEBUG: 0,
