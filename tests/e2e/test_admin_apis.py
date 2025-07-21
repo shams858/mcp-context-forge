@@ -51,7 +51,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # First-Party
-from mcpgateway.bootstrap_db import main as bootstrap_db
 from mcpgateway.config import settings
 from mcpgateway.db import Base
 from mcpgateway.main import app, get_db
