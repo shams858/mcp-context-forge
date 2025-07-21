@@ -58,7 +58,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # First-Party
 from mcpgateway import __version__
 from mcpgateway.admin import admin_router
-from mcpgateway.bootstrap_db import main as bootstrap_db
 from mcpgateway.cache import ResourceCache, SessionRegistry
 from mcpgateway.config import jsonpath_modifier, settings
 from mcpgateway.db import refresh_slugs_on_startup, SessionLocal
@@ -200,7 +199,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     logger.info("Starting MCP Gateway services")
     try:
-        await bootstrap_db()
         await tool_service.initialize()
         await resource_service.initialize()
         await prompt_service.initialize()
