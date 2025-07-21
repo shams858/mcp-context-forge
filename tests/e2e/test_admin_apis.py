@@ -69,42 +69,51 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # -------------------------
 @pytest_asyncio.fixture
 async def app_with_temp_db(monkeypatch):
-    # 1. Spin up a temp SQLite file
-    db_fd, db_path = tempfile.mkstemp(suffix=".db")
-    sqlite_url = f"sqlite:///{db_path}"
+    # 1. fresh sqlite file
+    fd, path = tempfile.mkstemp(suffix=".db")
+    url = f"sqlite:///{path}"
 
-    # 2. Point the settings **before** importing main
+    # 2. point settings at the temp DB *before* anything imports the app
     from mcpgateway.config import settings
-    monkeypatch.setattr(settings, "database_url", sqlite_url, raising=False)
+    monkeypatch.setattr(settings, "database_url", url, raising=False)
 
-    # 3. (Re)import main so it builds a brand‑new engine/SessionLocal
-    if "mcpgateway.main" in sys.modules:
-        importlib.reload(sys.modules["mcpgateway.main"])
-    else:
-        import mcpgateway.main       # noqa: F401
-
-    from mcpgateway.main import app
-    from mcpgateway.db import SessionLocal, Base  # SessionLocal is the new one
-
-    # 4. Create tables (or run Alembic migrations here if you prefer)
+    # 3. Build a new engine + SessionLocal, patch them into mcpgateway.db
+    import mcpgateway.db as db_mod
     engine = create_engine(
-        sqlite_url,
+        url,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    # 5. Override auth in one place
-    from mcpgateway.utils.verify_credentials import require_auth, require_basic_auth
+    monkeypatch.setattr(db_mod, "engine", engine, raising=False)
+    monkeypatch.setattr(db_mod, "SessionLocal", TestSessionLocal, raising=False)
+
+    # 4. create schema (or run Alembic migrations)
+    db_mod.Base.metadata.create_all(bind=engine)
+
+    # 5. Now import / reload the FastAPI app **after** the patch
+    if "mcpgateway.main" in sys.modules:
+        importlib.reload(sys.modules["mcpgateway.main"])
+    else:
+        import mcpgateway.main                    # noqa: F401
+
+    from mcpgateway.main import app
+    from mcpgateway.utils.verify_credentials import (
+        require_auth,
+        require_basic_auth,
+    )
+
+    # 6. bypass auth for tests
     app.dependency_overrides[require_auth] = lambda: TEST_USER
     app.dependency_overrides[require_basic_auth] = lambda: TEST_USER
 
-    yield app  # << the FastAPI instance with the right DB behind it
+    yield app
 
-    # 6. Cleanup
+    # 7. teardown
     app.dependency_overrides.clear()
-    os.close(db_fd)
-    os.unlink(db_path)
+    os.close(fd)
+    os.unlink(path)
 
 @pytest_asyncio.fixture
 async def client(app_with_temp_db):
