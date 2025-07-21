@@ -35,6 +35,7 @@ os.environ["MCPGATEWAY_ADMIN_API_ENABLED"] = "true"
 os.environ["MCPGATEWAY_UI_ENABLED"] = "true"
 
 # Standard
+import importlib, sys, os, tempfile, pytest_asyncio
 import tempfile
 from typing import AsyncGenerator
 from unittest.mock import patch
@@ -50,8 +51,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # First-Party
-from mcpgateway.db import Base
-from mcpgateway.main import app, get_db
+# from mcpgateway.db import Base
+# from mcpgateway.main import app, get_db
 
 # pytest.skip("Temporarily disabling this suite", allow_module_level=True)
 
@@ -67,65 +68,48 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # Fixtures
 # -------------------------
 @pytest_asyncio.fixture
-async def temp_db():
-    """
-    Create a temporary SQLite database for testing.
-
-    This fixture creates a fresh database for each test, ensuring complete
-    isolation between tests. The database is automatically cleaned up after
-    the test completes.
-    """
-    # Create temporary file for SQLite database
+async def app_with_temp_db(monkeypatch):
+    # 1. Spin up a temp SQLite file
     db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    sqlite_url = f"sqlite:///{db_path}"
 
-    # Create engine with SQLite
+    # 2. Point the settings **before** importing main
+    from mcpgateway.config import settings
+    monkeypatch.setattr(settings, "database_url", sqlite_url, raising=False)
+
+    # 3. (Re)import main so it builds a brand‑new engine/SessionLocal
+    if "mcpgateway.main" in sys.modules:
+        importlib.reload(sys.modules["mcpgateway.main"])
+    else:
+        import mcpgateway.main       # noqa: F401
+
+    from mcpgateway.main import app
+    from mcpgateway.db import SessionLocal, Base  # SessionLocal is the new one
+
+    # 4. Create tables (or run Alembic migrations here if you prefer)
     engine = create_engine(
-        f"sqlite:///{db_path}",
+        sqlite_url,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
-    # Create all tables
     Base.metadata.create_all(bind=engine)
 
-    # Create session factory
-    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    # Override the get_db dependency
-    def override_get_db():
-        db = TestSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    # Override authentication for all tests
-    # First-Party
+    # 5. Override auth in one place
     from mcpgateway.utils.verify_credentials import require_auth, require_basic_auth
+    app.dependency_overrides[require_auth] = lambda: TEST_USER
+    app.dependency_overrides[require_basic_auth] = lambda: TEST_USER
 
-    def override_auth():
-        return TEST_USER
+    yield app  # << the FastAPI instance with the right DB behind it
 
-    app.dependency_overrides[require_auth] = override_auth
-    app.dependency_overrides[require_basic_auth] = override_auth
-
-    yield engine
-
-    # Cleanup
+    # 6. Cleanup
     app.dependency_overrides.clear()
     os.close(db_fd)
     os.unlink(db_path)
 
-
 @pytest_asyncio.fixture
-async def client(temp_db) -> AsyncGenerator[AsyncClient, None]:
-    """Create an async test client with the test database."""
-    # Third-Party
+async def client(app_with_temp_db):
     from httpx import ASGITransport, AsyncClient
-
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=app_with_temp_db)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
