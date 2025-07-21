@@ -321,7 +321,7 @@ result = crew.kickoff()
 |---------|-----|----------|-----------------|--------|-------|
 | Version Info (JSON) | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" $GW_URL/version \| jq` | Get diagnostics | Detailed system info including uptime, platform, database status | ☐ | **Key diagnostic endpoint** |
 | Version Info (HTML) | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" "$GW_URL/version?fmt=html"` | Human-readable | HTML diagnostics page | ☐ | Browser-friendly |
-| OpenAPI Schema | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" $GW_URL/openapi.json \| jq '.info.title'` | Get API schema | `"MCP Gateway"` | ☐ | API documentation |
+| OpenAPI Schema | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" $GW_URL/openapi.json \| jq '.info.title'` | Get API schema | `"MCP_Gateway"` | ☐ | API documentation |
 | Swagger UI | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" $GW_URL/docs \| grep -q "MCP Gateway" && echo "✓ Swagger UI loads"` | Interactive docs | ✓ Swagger UI loads | ☐ | API explorer |
 | ReDoc | `curl -H "Authorization: Bearer $MCPGATEWAY_BEARER_TOKEN" $GW_URL/redoc \| grep -q "ReDoc" && echo "✓ ReDoc loads"` | Alternative docs | ✓ ReDoc loads | ☐ | Clean API docs |
 
@@ -391,3 +391,94 @@ MCPGATEWAY_ADMIN_API_ENABLED=true
 - **MCP Servers**: Start each MCP server on its designated port before registering as gateway
 - **VS Code**: Reload window after changing MCP configuration in settings.json
 - **AI Agents**: Ensure you have API keys configured for LLM providers when testing agents
+
+
+## MCP Gateway Test Report Template
+
+**Test Environment**: MCP Gateway v___
+**Test Date**: ___________
+**Tester**: ___________
+**Gateway URL**: ___________
+
+## Status Legend
+
+- ✅ **Passed** - All tests in section completed successfully
+- ⚠️ **Partial** - Some tests passed, some failed or incomplete
+- ❌ **Failed** - Critical failures preventing section completion
+- 🚧 **In Progress** - Testing currently underway
+- 🔒 **Blocked** - Cannot proceed due to dependencies or external factors
+
+### Executive Summary
+
+Overall test completion: **___%** | Total Tests: **___** | Passed: **___** | Failed: **___** | Blocked: **___**
+
+### Test Results by Section
+
+| Section | Test Area | Status | Tests | Passed | Failed | Blocked | Comments |
+|---------|-----------|--------|-------|--------|--------|---------|----------|
+| **Setup** | Test Environment Setup | | | | | | |
+| **1** | MCP Servers Setup | | | | | | |
+| **2** | Core Protocol Operations | | | | | | |
+| **3** | Gateway Federation | | | | | | |
+| **4** | Tool Discovery & Execution | | | | | | |
+| **5** | Virtual Server Management | | | | | | |
+| **6** | Resource Management | | | | | | |
+| **7** | Prompt Management | | | | | | |
+| **8** | REST Tool Creation | | | | | | |
+| **9** | MCP Wrapper Testing | | | | | | |
+| **10.1** | VS Code Integration (Wrapper) | | | | | | |
+| **10.2** | VS Code Integration (Direct) | | | | | | |
+| **11.1** | LangChain Integration | | | | | | |
+| **11.2** | CrewAI Integration | | | | | | |
+| **12** | Open Source MCP Servers | | | | | | |
+| **13** | Health & Monitoring | | | | | | |
+| **14** | Admin Interface | | | | | | |
+| **15** | Input Validation | | | | | | |
+| **16** | Error Handling | | | | | | |
+| **17** | System Summary | | | | | | |
+| **Cleanup** | Test Cleanup | | | | | | |
+
+### Issue Summary
+
+#### 🔴 Critical Issues
+1.
+2.
+3.
+
+#### 🟡 Major Issues
+1.
+2.
+3.
+
+#### 🟢 Minor Issues
+1.
+2.
+3.
+
+### Recommendations
+
+1. **Immediate Actions**:
+   -
+   -
+   -
+
+2. **Short-term**:
+   -
+   -
+   -
+
+3. **Long-term**:
+   -
+   -
+   -
+
+### Test Environment Notes
+
+- **Performance**:
+- **Stability**:
+- **Federation**:
+- **Compatibility**:
+
+---
+
+**Next Test Cycle**:
