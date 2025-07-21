@@ -35,7 +35,6 @@ os.environ["MCPGATEWAY_ADMIN_API_ENABLED"] = "true"
 os.environ["MCPGATEWAY_UI_ENABLED"] = "true"
 
 # Standard
-import logging
 import tempfile
 from typing import AsyncGenerator
 from unittest.mock import patch
@@ -46,16 +45,13 @@ import uuid
 from httpx import AsyncClient
 import pytest
 import pytest_asyncio
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # First-Party
-from mcpgateway.config import settings
 from mcpgateway.db import Base
 from mcpgateway.main import app, get_db
-
-logger = logging.getLogger(__name__)
 
 # pytest.skip("Temporarily disabling this suite", allow_module_level=True)
 
@@ -71,7 +67,7 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # Fixtures
 # -------------------------
 @pytest_asyncio.fixture
-async def temp_db(monkeypatch):
+async def temp_db():
     """
     Create a temporary SQLite database for testing.
 
@@ -81,19 +77,16 @@ async def temp_db(monkeypatch):
     """
     # Create temporary file for SQLite database
     db_fd, db_path = tempfile.mkstemp(suffix=".db")
-    sqlite_url = f"sqlite:///{db_path}"
-
-    monkeypatch.setattr(settings, "database_url", sqlite_url)
 
     # Create engine with SQLite
     engine = create_engine(
-        sqlite_url,
+        f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
 
-
-    # Base.metadata.create_all(bind=engine)  # Create tables
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
 
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
