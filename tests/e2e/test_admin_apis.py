@@ -35,9 +35,6 @@ os.environ["MCPGATEWAY_ADMIN_API_ENABLED"] = "true"
 os.environ["MCPGATEWAY_UI_ENABLED"] = "true"
 
 # Standard
-import importlib, sys, os, tempfile, pytest_asyncio
-import tempfile
-from typing import AsyncGenerator
 from unittest.mock import patch
 from urllib.parse import quote
 import uuid
@@ -46,11 +43,7 @@ import uuid
 from httpx import AsyncClient
 import pytest
 import pytest_asyncio
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-# First-Party
 # from mcpgateway.db import Base
 # from mcpgateway.main import app, get_db
 
@@ -115,13 +108,18 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 #     os.close(fd)
 #     os.unlink(path)
 
+
 @pytest_asyncio.fixture
 async def client(app_with_temp_db):
+    # First-Party
     from mcpgateway.utils.verify_credentials import require_auth, require_basic_auth
+
     app_with_temp_db.dependency_overrides[require_auth] = lambda: TEST_USER
     app_with_temp_db.dependency_overrides[require_basic_auth] = lambda: TEST_USER
 
+    # Third-Party
     from httpx import ASGITransport, AsyncClient
+
     transport = ASGITransport(app=app_with_temp_db)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

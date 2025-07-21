@@ -14,9 +14,12 @@ will have to wait a long time for queries
 Reference: https://stackoverflow.com/questions/10855197/frequent-worker-timeout
 """
 
+# Standard
 from importlib.resources import files
-from alembic.config import Config
+
+# Third-Party
 from alembic import command
+from alembic.config import Config
 
 # First-Party
 # Import Pydantic Settings singleton
