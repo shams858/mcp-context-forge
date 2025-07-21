@@ -52,6 +52,8 @@ from sqlalchemy.pool import StaticPool
 # First-Party
 from mcpgateway.db import Base
 from mcpgateway.main import app, get_db
+from mcpgateway.config import settings
+from mcpgateway.bootstrap_db import main as bootstrap_db
 
 # pytest.skip("Temporarily disabling this suite", allow_module_level=True)
 
@@ -67,7 +69,7 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # Fixtures
 # -------------------------
 @pytest_asyncio.fixture
-async def temp_db():
+async def temp_db(monkeypatch):
     """
     Create a temporary SQLite database for testing.
 
@@ -77,16 +79,18 @@ async def temp_db():
     """
     # Create temporary file for SQLite database
     db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    sqlite_url = f"sqlite:///{db_path}"
+
+    monkeypatch.setattr(settings, "database_url", sqlite_url)
+
+    await bootstrap_db()  # Ensure the database is bootstrapped
 
     # Create engine with SQLite
     engine = create_engine(
-        f"sqlite:///{db_path}",
+        sqlite_url,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
 
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
