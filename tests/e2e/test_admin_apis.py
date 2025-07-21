@@ -72,7 +72,7 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # Fixtures
 # -------------------------
 @pytest_asyncio.fixture
-async def temp_db(monkeypatch):
+async def temp_db():
     """
     Create a temporary SQLite database for testing.
 
@@ -84,9 +84,9 @@ async def temp_db(monkeypatch):
     db_fd, db_path = tempfile.mkstemp(suffix=".db")
     sqlite_url = f"sqlite:///{db_path}"
 
-    monkeypatch.setattr(settings, "database_url", sqlite_url)
+    # monkeypatch.setattr(settings, "database_url", sqlite_url)
 
-    await bootstrap_db()  # Ensure the database is bootstrapped
+    # await bootstrap_db()  # Ensure the database is bootstrapped
 
     # Create engine with SQLite
     engine = create_engine(
@@ -95,8 +95,8 @@ async def temp_db(monkeypatch):
         poolclass=StaticPool,
     )
 
-    Base.metadata.create_all(bind=engine)
-    
+    Base.metadata.create_all(bind=engine)  # Create tables
+
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
