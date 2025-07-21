@@ -67,60 +67,67 @@ TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_USER}:{TEST_PASSWORD}"}
 # -------------------------
 # Fixtures
 # -------------------------
-@pytest_asyncio.fixture
-async def app_with_temp_db(monkeypatch):
-    # 1. fresh sqlite file
-    fd, path = tempfile.mkstemp(suffix=".db")
-    url = f"sqlite:///{path}"
+# @pytest_asyncio.fixture
+# async def app_with_temp_db(monkeypatch):
+#     # 1. fresh sqlite file
+#     fd, path = tempfile.mkstemp(suffix=".db")
+#     url = f"sqlite:///{path}"
 
-    # 2. point settings at the temp DB *before* anything imports the app
-    from mcpgateway.config import settings
-    monkeypatch.setattr(settings, "database_url", url, raising=False)
+#     # 2. point settings at the temp DB *before* anything imports the app
+#     from mcpgateway.config import settings
+#     monkeypatch.setattr(settings, "database_url", url, raising=False)
 
-    # 3. Build a new engine + SessionLocal, patch them into mcpgateway.db
-    import mcpgateway.db as db_mod
-    engine = create_engine(
-        url,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+#     # 3. Build a new engine + SessionLocal, patch them into mcpgateway.db
+#     import mcpgateway.db as db_mod
+#     engine = create_engine(
+#         url,
+#         connect_args={"check_same_thread": False},
+#         poolclass=StaticPool,
+#     )
+#     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    monkeypatch.setattr(db_mod, "engine", engine, raising=False)
-    monkeypatch.setattr(db_mod, "SessionLocal", TestSessionLocal, raising=False)
+#     monkeypatch.setattr(db_mod, "engine", engine, raising=False)
+#     monkeypatch.setattr(db_mod, "SessionLocal", TestSessionLocal, raising=False)
 
-    # 4. create schema (or run Alembic migrations)
-    db_mod.Base.metadata.create_all(bind=engine)
+#     # 4. create schema (or run Alembic migrations)
+#     db_mod.Base.metadata.create_all(bind=engine)
 
-    # 5. Now import / reload the FastAPI app **after** the patch
-    if "mcpgateway.main" in sys.modules:
-        importlib.reload(sys.modules["mcpgateway.main"])
-    else:
-        import mcpgateway.main                    # noqa: F401
+#     # 5. Now import / reload the FastAPI app **after** the patch
+#     if "mcpgateway.main" in sys.modules:
+#         importlib.reload(sys.modules["mcpgateway.main"])
+#     else:
+#         import mcpgateway.main                    # noqa: F401
 
-    from mcpgateway.main import app
-    from mcpgateway.utils.verify_credentials import (
-        require_auth,
-        require_basic_auth,
-    )
+#     from mcpgateway.main import app
+#     from mcpgateway.utils.verify_credentials import (
+#         require_auth,
+#         require_basic_auth,
+#     )
 
-    # 6. bypass auth for tests
-    app.dependency_overrides[require_auth] = lambda: TEST_USER
-    app.dependency_overrides[require_basic_auth] = lambda: TEST_USER
+#     # 6. bypass auth for tests
+#     app.dependency_overrides[require_auth] = lambda: TEST_USER
+#     app.dependency_overrides[require_basic_auth] = lambda: TEST_USER
 
-    yield app
+#     yield app
 
-    # 7. teardown
-    app.dependency_overrides.clear()
-    os.close(fd)
-    os.unlink(path)
+#     # 7. teardown
+#     app.dependency_overrides.clear()
+#     os.close(fd)
+#     os.unlink(path)
 
 @pytest_asyncio.fixture
 async def client(app_with_temp_db):
+    from mcpgateway.utils.verify_credentials import require_auth, require_basic_auth
+    app_with_temp_db.dependency_overrides[require_auth] = lambda: TEST_USER
+    app_with_temp_db.dependency_overrides[require_basic_auth] = lambda: TEST_USER
+
     from httpx import ASGITransport, AsyncClient
     transport = ASGITransport(app=app_with_temp_db)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+    app_with_temp_db.dependency_overrides.pop(require_auth, None)
+    app_with_temp_db.dependency_overrides.pop(require_basic_auth, None)
 
 
 @pytest_asyncio.fixture
