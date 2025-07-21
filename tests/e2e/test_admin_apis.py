@@ -35,6 +35,7 @@ os.environ["MCPGATEWAY_ADMIN_API_ENABLED"] = "true"
 os.environ["MCPGATEWAY_UI_ENABLED"] = "true"
 
 # Standard
+import logging
 import tempfile
 from typing import AsyncGenerator
 from unittest.mock import patch
@@ -45,15 +46,17 @@ import uuid
 from httpx import AsyncClient
 import pytest
 import pytest_asyncio
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # First-Party
+from mcpgateway.bootstrap_db import main as bootstrap_db
+from mcpgateway.config import settings
 from mcpgateway.db import Base
 from mcpgateway.main import app, get_db
-from mcpgateway.config import settings
-from mcpgateway.bootstrap_db import main as bootstrap_db
+
+logger = logging.getLogger(__name__)
 
 # pytest.skip("Temporarily disabling this suite", allow_module_level=True)
 
@@ -91,6 +94,10 @@ async def temp_db(monkeypatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    insp = inspect(engine)
+    table_list = insp.get_table_names()
+    logger.info(f"🎉 Tables in temp DB: {table_list}")
 
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
