@@ -95,10 +95,8 @@ async def temp_db(monkeypatch):
         poolclass=StaticPool,
     )
 
-    insp = inspect(engine)
-    table_list = insp.get_table_names()
-    logger.info(f"🎉 Tables in temp DB: {table_list}")
-
+    Base.metadata.create_all(bind=engine)
+    
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
