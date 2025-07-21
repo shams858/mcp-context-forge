@@ -85,8 +85,6 @@ async def temp_db(monkeypatch):
 
     monkeypatch.setattr(settings, "database_url", sqlite_url)
 
-    await bootstrap_db()  # Ensure the database is bootstrapped
-
     # Create engine with SQLite
     engine = create_engine(
         sqlite_url,
