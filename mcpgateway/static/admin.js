@@ -4258,7 +4258,6 @@ async function handlePromptFormSubmit(e) {
     try {
         // Validate inputs
         const name = formData.get("name");
-        const description = formData.get("description");
         const nameValidation = validateInputName(name, "prompt");
 
         if (!nameValidation.valid) {
