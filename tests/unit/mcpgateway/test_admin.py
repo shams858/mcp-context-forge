@@ -659,7 +659,7 @@ class TestAdminPromptRoutes:
         mock_request.form = AsyncMock(return_value=form_data)
 
         result = await admin_add_prompt(mock_request, mock_db, "test-user")
-        assert isinstance(result, RedirectResponse)
+        assert isinstance(result, JSONResponse)
 
         # Test with missing arguments field
         form_data = FakeForm(
@@ -671,7 +671,7 @@ class TestAdminPromptRoutes:
         mock_request.form = AsyncMock(return_value=form_data)
 
         result = await admin_add_prompt(mock_request, mock_db, "test-user")
-        assert isinstance(result, RedirectResponse)
+        assert isinstance(result, JSONResponse)
 
     @patch.object(PromptService, "register_prompt")
     async def test_admin_add_prompt_with_invalid_arguments_json(self, mock_register_prompt, mock_request, mock_db):

@@ -3117,16 +3117,30 @@ async def admin_add_prompt(request: Request, db: Session = Depends(get_db), user
     form = await request.form()
     args_json = form.get("arguments") or "[]"
     arguments = json.loads(args_json)
-    prompt = PromptCreate(
-        name=form["name"],
-        description=form.get("description"),
-        template=form["template"],
-        arguments=arguments,
-    )
-    await prompt_service.register_prompt(db, prompt)
+    try:
+        prompt = PromptCreate(
+            name=form["name"],
+            description=form.get("description"),
+            template=form["template"],
+            arguments=arguments,
+        )
+        await prompt_service.register_prompt(db, prompt)
 
-    root_path = request.scope.get("root_path", "")
-    return RedirectResponse(f"{root_path}/admin#prompts", status_code=303)
+        return JSONResponse(
+            content={"message": "Add resource registered successfully!", "success": True},
+            status_code=200,
+        )
+    except Exception as ex:
+        if isinstance(ex, ValidationError):
+            logger.error(f"ValidationError in admin_add_prompt: {ErrorFormatter.format_validation_error(ex)}")
+            return JSONResponse(content=ErrorFormatter.format_validation_error(ex), status_code=422)
+        if isinstance(ex, IntegrityError):
+            error_message = ErrorFormatter.format_database_error(ex)
+            logger.error(f"IntegrityError in admin_add_prompt: {error_message}")
+            return JSONResponse(status_code=409, content=error_message)
+
+        logger.error(f"Error in admin_add_prompt: {ex}")
+        return JSONResponse(content={"message": str(ex), "success": False}, status_code=500)
 
 
 @admin_router.post("/prompts/{name}/edit")

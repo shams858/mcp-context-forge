@@ -4249,6 +4249,68 @@ async function handleResourceFormSubmit(e) {
         }		
 }
 
+async function handlePromptFormSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+    const status = safeGetElement("status-prompts");
+    const loading = safeGetElement("add-gateway-loading");
+    try {
+        // Validate inputs
+        const name = formData.get("name");
+        const description = formData.get("description");
+        const nameValidation = validateInputName(name, "prompt");
+
+        if (!nameValidation.valid) {
+            showErrorMessage(nameValidation.error);
+            return;
+        }
+
+        if (loading) {
+            loading.style.display = "block";
+        }
+        if (status) {
+            status.textContent = "";
+            status.classList.remove("error-status");
+        }
+        
+        const isInactiveCheckedBool = isInactiveChecked("prompts");
+        formData.append("is_inactive_checked", isInactiveCheckedBool);
+
+        const response = await fetchWithTimeout(
+                `${window.ROOT_PATH}/admin/prompts`,
+                {
+                    method: "POST",
+                    body: formData,
+                },
+            );
+
+        const result = await response.json();
+        console.log("Prompt form submit result:", result);
+        if (!result.success) {
+            throw new Error(result.message || "An error occurred");
+        } else {
+            const redirectUrl = isInactiveCheckedBool
+                ? `${window.ROOT_PATH}/admin?include_inactive=true#prompts`
+                : `${window.ROOT_PATH}/admin#prompts`;
+            window.location.href = redirectUrl;
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            if (status) {
+                status.textContent = error.message || "An error occurred!";
+                status.classList.add("error-status");
+            }
+            showErrorMessage(error.message);
+        } finally {
+            // location.reload();
+            if (loading) {
+                loading.style.display = "none";
+            }
+        }		
+}
+
+
 async function handleServerFormSubmit(e) {
     e.preventDefault();
 
@@ -4889,6 +4951,11 @@ function setupFormHandlers() {
     const resourceForm = safeGetElement("add-resource-form");
     if (resourceForm) {
         resourceForm.addEventListener("submit", handleResourceFormSubmit);
+    }
+
+    const promptForm = safeGetElement("add-prompt-form");
+    if (promptForm) {
+        promptForm.addEventListener("submit", handlePromptFormSubmit);
     }
 
     const toolForm = safeGetElement("add-tool-form");

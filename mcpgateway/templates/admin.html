@@ -929,8 +929,7 @@
 
       <div class="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
         <h3 class="text-lg font-bold mb-4 dark:text-gray-200">Add New Prompt</h3>
-        <form method="POST" action="{{ root_path }}/admin/prompts" id="add-prompt-form"
-          onsubmit="return handleToggleSubmit(event, 'prompts')">
+        <form id="add-prompt-form">
           <div class="grid grid-cols-1 gap-6">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-400">Name</label>
@@ -945,15 +944,19 @@
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-400">Template</label>
               <textarea name="template" id="prompt-template-editor"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-200 dark:bg-gray-800 dark:placeholder-gray-300 dark:text-gray-300"
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-900 dark:placeholder-gray-300 dark:text-gray-300"
                 placeholder=""></textarea>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-400">Arguments (JSON)</label>
-              <textarea name="arguments" id="prompt-args-editor"
+              <textarea name="argument-schema" id="prompt-args-editor"
                 class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-900 dark:placeholder-gray-300 dark:text-gray-300"
-                placeholder="[{'name':'arg1','description':'Argument 1','required':true}]"></textarea>
+                placeholder=""></textarea>
             </div>
+            <div id="add-prompts-loading" style="display: none;">
+              <div class="spinner"></div>
+            </div>
+            <div id="status-prompts"></div>
           </div>
           <div class="mt-6">
             <button type="submit"
