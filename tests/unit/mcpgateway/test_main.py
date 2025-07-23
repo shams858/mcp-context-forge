@@ -239,7 +239,7 @@ class TestHealthAndInfrastructure:
 class TestProtocolEndpoints:
     """Tests for MCP protocol operations: initialize, ping, notifications, etc."""
 
-    @patch("mcpgateway.main.validate_request")
+    # @patch("mcpgateway.main.validate_request")
     @patch("mcpgateway.main.session_registry.handle_initialize_logic")
     def test_initialize_endpoint(self, mock_handle_initialize, _mock_validate, test_client, auth_headers):
         """Test MCP protocol initialization."""
@@ -271,7 +271,7 @@ class TestProtocolEndpoints:
         assert body["protocolVersion"] == PROTOCOL_VERSION
         mock_handle_initialize.assert_called_once()
 
-    @patch("mcpgateway.main.validate_request")
+    # @patch("mcpgateway.main.validate_request")
     def test_ping_endpoint(self, _mock_validate, test_client, auth_headers):
         """Test MCP ping endpoint."""
         req = {"jsonrpc": "2.0", "method": "ping", "id": "test-id"}
@@ -807,7 +807,7 @@ class TestRPCEndpoints:
         mock_invoke_tool.assert_called_once_with(db=ANY, name="test_tool", arguments={"param": "value"})
 
     @patch("mcpgateway.main.prompt_service.get_prompt")
-    @patch("mcpgateway.main.validate_request")
+    # @patch("mcpgateway.main.validate_request")
     def test_rpc_prompt_get(self, _mock_validate, mock_get_prompt, test_client, auth_headers):
         """Test prompt retrieval via JSON-RPC."""
         mock_get_prompt.return_value = {
@@ -829,7 +829,7 @@ class TestRPCEndpoints:
         mock_get_prompt.assert_called_once_with(ANY, "test_prompt", {"param": "value"})
 
     @patch("mcpgateway.main.tool_service.list_tools")
-    @patch("mcpgateway.main.validate_request")
+    # @patch("mcpgateway.main.validate_request")
     def test_rpc_list_tools(self, _mock_validate, mock_list_tools, test_client, auth_headers):
         """Test listing tools via JSON-RPC."""
         mock_tool = MagicMock()
@@ -849,7 +849,7 @@ class TestRPCEndpoints:
         assert isinstance(body, list)
         mock_list_tools.assert_called_once()
 
-    @patch("mcpgateway.main.validate_request")
+    # @patch("mcpgateway.main.validate_request")
     def test_rpc_invalid_request(self, mock_validate, test_client, auth_headers):
         """Test RPC error handling for invalid requests."""
         mock_validate.side_effect = Exception("Invalid request")
