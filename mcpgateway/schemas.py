@@ -1572,6 +1572,14 @@ class PromptInvocation(BaseModelWithConfigDict):
 
 # --- Transport Type ---
 class TransportType(str, Enum):
+    """Enum for transport types used by the MCP server.
+    
+    Attributes:
+        SSE (str): Server-Sent Events transport.
+        HTTP (str): Standard HTTP transport.
+        STDIO (str): Standard input/output transport.
+        STREAMABLEHTTP (str): Streamable HTTP transport.
+    """
     SSE = "SSE"
     HTTP = "HTTP"
     STDIO = "STDIO"
@@ -1690,6 +1698,15 @@ class GatewayCreate(BaseModel):
     @field_validator("transport")
     @classmethod
     def validate_transport(cls, v: str) -> str:
+        """Validate transport type
+        
+        Args:
+            v (str): Value to validate
+        Returns:
+            str: Value if validated as safe
+        Raises:
+            ValueError: If transport type is invalid
+        """
         if v not in [t.value for t in TransportType]:
             raise ValueError(f"Invalid transport type: {v}. Must be one of: {', '.join([t.value for t in TransportType])}")
         return v
