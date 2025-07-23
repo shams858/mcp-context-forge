@@ -1968,7 +1968,6 @@ async def handle_rpc(request: Request, db: Session = Depends(get_db), user: str 
     try:
         logger.debug(f"User {user} made an RPC request")
         body = await request.json()
-        # validate_request(body)
         method = body["method"]
         # rpc_id = body.get("id")
         params = body.get("params", {})
