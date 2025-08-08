@@ -22,8 +22,8 @@ import json
 import logging
 import re
 import time
-import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
+import uuid
 
 # Third-Party
 from mcp import ClientSession
@@ -41,7 +41,7 @@ from mcpgateway.db import Tool as DbTool
 from mcpgateway.db import ToolMetric
 from mcpgateway.models import TextContent, ToolResult
 from mcpgateway.plugins.framework.manager import PluginManager
-from mcpgateway.plugins.framework.plugin_types import GlobalContext, PluginViolationError, ToolPreInvokePayload, ToolPostInvokePayload
+from mcpgateway.plugins.framework.plugin_types import GlobalContext, PluginViolationError, ToolPostInvokePayload, ToolPreInvokePayload
 from mcpgateway.schemas import (
     ToolCreate,
     ToolRead,
@@ -609,16 +609,12 @@ class ToolService:
         context_table = None
         request_id = uuid.uuid4().hex
         # Use gateway_id if available, otherwise use a generic server identifier
-        server_id = getattr(tool, 'gateway_id', None) or 'unknown'
+        server_id = getattr(tool, "gateway_id", None) or "unknown"
         global_context = GlobalContext(request_id=request_id, server_id=server_id, tenant_id=None)
 
         if self._plugin_manager:
             try:
-                pre_result, context_table = await self._plugin_manager.tool_pre_invoke(
-                    payload=ToolPreInvokePayload(name, arguments),
-                    global_context=global_context,
-                    local_contexts=None
-                )
+                pre_result, context_table = await self._plugin_manager.tool_pre_invoke(payload=ToolPreInvokePayload(name, arguments), global_context=global_context, local_contexts=None)
 
                 if not pre_result.continue_processing:
                     # Plugin blocked the request
@@ -763,9 +759,7 @@ class ToolService:
             if self._plugin_manager:
                 try:
                     post_result, _ = await self._plugin_manager.tool_post_invoke(
-                        payload=ToolPostInvokePayload(name=name, result=tool_result.model_dump(by_alias=True)),
-                        global_context=global_context,
-                        local_contexts=context_table
+                        payload=ToolPostInvokePayload(name=name, result=tool_result.model_dump(by_alias=True)), global_context=global_context, local_contexts=context_table
                     )
                     if not post_result.continue_processing:
                         # Plugin blocked the request
