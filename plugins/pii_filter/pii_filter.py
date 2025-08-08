@@ -12,7 +12,7 @@ and their responses, including SSNs, credit cards, emails, phone numbers, and mo
 # Standard
 import re
 from enum import Enum
-from typing import Optional, Pattern, Dict, List, Tuple
+from typing import Any, Optional, Pattern, Dict, List, Tuple
 import logging
 
 # Third-Party
@@ -652,45 +652,35 @@ class PIIFilterPlugin(Plugin):
         Returns:
             Result with potentially modified tool arguments.
         """
+        print(f"tool_pre_invoke: {payload.args} {payload} {context}")
         if not payload.args:
             return ToolPreInvokeResult()
 
         modified = False
         all_detections = {}
 
-        for key, value in payload.args.items():
-            if isinstance(value, str):
-                detections = self.detector.detect(value)
+        # Use intelligent nested processing for tool arguments
+        modified, detections = self._process_nested_data_for_pii(payload.args, "args", all_detections)
 
-                if detections:
-                    all_detections[f"arg_{key}"] = detections
-                    self.detection_count += sum(len(items) for items in detections.values())
-
-                    if self.pii_config.log_detections:
-                        logger.warning(
-                            f"PII detected in tool argument '{key}': "
-                            f"{', '.join(detections.keys())}"
-                        )
-
-                    # Check if we should block
-                    if self.pii_config.block_on_detection:
-                        violation = PluginViolation(
-                            reason="PII detected in tool arguments",
-                            description=f"Detected {', '.join(detections.keys())} in argument '{key}'",
-                            code="PII_DETECTED_IN_TOOL_ARGS",
-                            details={
-                                "argument": key,
-                                "detected_types": list(detections.keys()),
-                                "count": sum(len(items) for items in detections.values())
-                            }
-                        )
-                        return ToolPreInvokeResult(continue_processing=False, violation=violation)
-
-                    # Mask the PII
-                    masked_value = self.detector.mask(value, detections)
-                    payload.args[key] = masked_value
-                    modified = True
-                    self.masked_count += sum(len(items) for items in detections.values())
+        if detections and self.pii_config.block_on_detection:
+            violation = PluginViolation(
+                reason="PII detected in tool arguments",
+                description=f"Detected PII in tool arguments",
+                code="PII_DETECTED_IN_TOOL_ARGS",
+                details={
+                    "detected_types": list(set(
+                        pii_type
+                        for arg_detections in all_detections.values()
+                        for pii_type in arg_detections.keys()
+                    )),
+                    "total_count": sum(
+                        len(items)
+                        for arg_detections in all_detections.values()
+                        for items in arg_detections.values()
+                    )
+                }
+            )
+            return ToolPreInvokeResult(continue_processing=False, violation=violation)
 
         # Store detection metadata
         if all_detections and self.pii_config.include_detection_details:
@@ -730,8 +720,12 @@ class PIIFilterPlugin(Plugin):
         if not payload.result:
             return ToolPostInvokeResult()
 
+        print(f"tool_post_invoke: {payload.result} {payload.name}")
+
         modified = False
         all_detections = {}
+
+        print(f"type of payload.result: {type(payload.result)}")
 
         # Handle string results
         if isinstance(payload.result, str):
@@ -761,39 +755,28 @@ class PIIFilterPlugin(Plugin):
                 modified = True
                 self.masked_count += sum(len(items) for items in detections.values())
 
-        # Handle dictionary results
+                # Handle dictionary results - use recursive traversal
         elif isinstance(payload.result, dict):
-            for key, value in payload.result.items():
-                if isinstance(value, str):
-                    detections = self.detector.detect(value)
-                    if detections:
-                        all_detections[f"result_{key}"] = detections
-                        self.detection_count += sum(len(items) for items in detections.values())
-
-                        if self.pii_config.log_detections:
-                            logger.warning(
-                                f"PII detected in tool result field '{key}': "
-                                f"{', '.join(detections.keys())}"
-                            )
-
-                        # Check if we should block
-                        if self.pii_config.block_on_detection:
-                            violation = PluginViolation(
-                                reason="PII detected in tool result",
-                                description=f"Detected {', '.join(detections.keys())} in result field '{key}'",
-                                code="PII_DETECTED_IN_TOOL_RESULT",
-                                details={
-                                    "field": key,
-                                    "detected_types": list(detections.keys()),
-                                    "count": sum(len(items) for items in detections.values())
-                                }
-                            )
-                            return ToolPostInvokeResult(continue_processing=False, violation=violation)
-
-                        # Mask the PII
-                        payload.result[key] = self.detector.mask(value, detections)
-                        modified = True
-                        self.masked_count += sum(len(items) for items in detections.values())
+            modified, detections = self._process_nested_data_for_pii(payload.result, "result", all_detections)
+            if detections and self.pii_config.block_on_detection:
+                violation = PluginViolation(
+                    reason="PII detected in tool result",
+                    description=f"Detected PII in nested tool result data",
+                    code="PII_DETECTED_IN_TOOL_RESULT",
+                    details={
+                        "detected_types": list(set(
+                            pii_type
+                            for field_detections in all_detections.values()
+                            for pii_type in field_detections.keys()
+                        )),
+                        "total_count": sum(
+                            len(items)
+                            for field_detections in all_detections.values()
+                            for items in field_detections.values()
+                        )
+                    }
+                )
+                return ToolPostInvokeResult(continue_processing=False, violation=violation)
 
         # Store detection metadata
         if all_detections and self.pii_config.include_detection_details:
@@ -825,6 +808,157 @@ class PIIFilterPlugin(Plugin):
             return ToolPostInvokeResult(modified_payload=payload)
 
         return ToolPostInvokeResult()
+
+    def _process_nested_data_for_pii(self, data: Any, path: str, all_detections: dict) -> tuple[bool, bool]:
+        """
+        Recursively process nested data structures to find and mask PII.
+
+        Args:
+            data: The data structure to process (dict, list, str, or other)
+            path: The current path in the data structure for logging
+            all_detections: Dictionary to store all detections found
+
+        Returns:
+            Tuple of (modified, has_detections) where:
+            - modified: True if any data was modified
+            - has_detections: True if any PII was detected
+        """
+        modified = False
+        has_detections = False
+
+        if isinstance(data, str):
+            # Process string data - check for PII and also try to parse as JSON
+            detections = self.detector.detect(data)
+            if detections:
+                all_detections[path] = detections
+                self.detection_count += sum(len(items) for items in detections.values())
+                has_detections = True
+
+                if self.pii_config.log_detections:
+                    logger.warning(f"PII detected in tool result at '{path}': {', '.join(detections.keys())}")
+
+                # Mask the PII in-place if possible
+                if hasattr(data, '__setitem__'):  # This won't work for strings, but we handle that in the caller
+                    masked_data = self.detector.mask(data, detections)
+                    # We can't modify strings in place, so return the masked version
+                    # The caller needs to handle the assignment
+                    modified = True
+                    self.masked_count += sum(len(items) for items in detections.values())
+
+            # Try to parse as JSON and process nested content
+            try:
+                import json
+                parsed_json = json.loads(data)
+                json_modified, json_detections = self._process_nested_data_for_pii(parsed_json, f"{path}(json)", all_detections)
+                has_detections = has_detections or json_detections
+                # Note: JSON modification will be handled by the caller using the detections
+                if json_modified:
+                    modified = True
+            except (json.JSONDecodeError, TypeError):
+                # Not valid JSON, that's fine
+                pass
+
+        elif isinstance(data, dict):
+            # Process dictionary recursively
+            for key, value in data.items():
+                current_path = f"{path}.{key}"
+                value_modified, value_detections = self._process_nested_data_for_pii(value, current_path, all_detections)
+
+                if value_modified and isinstance(value, str):
+                    # Handle string masking including JSON strings
+                    detections = all_detections.get(current_path, {})
+                    if detections:
+                        data[key] = self.detector.mask(value, detections)
+                        modified = True
+
+                    # Also check for JSON content that needs re-serialization
+                    json_path = f"{current_path}(json)"
+                    if any(path.startswith(json_path) for path in all_detections.keys()):
+                        try:
+                            import json
+                            parsed_json = json.loads(value)
+                            # Apply masking to the parsed JSON
+                            self._apply_pii_masking_to_parsed_json(parsed_json, json_path, all_detections)
+                            # Re-serialize with masked data
+                            data[key] = json.dumps(parsed_json, ensure_ascii=False, separators=(',', ':'))
+                            modified = True
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                elif value_modified:
+                    modified = True
+
+                has_detections = has_detections or value_detections
+
+        elif isinstance(data, list):
+            # Process list recursively
+            for i, item in enumerate(data):
+                current_path = f"{path}[{i}]"
+                item_modified, item_detections = self._process_nested_data_for_pii(item, current_path, all_detections)
+
+                if item_modified and isinstance(item, str):
+                    # Handle string masking in list including JSON strings
+                    detections = all_detections.get(current_path, {})
+                    if detections:
+                        data[i] = self.detector.mask(item, detections)
+                        modified = True
+
+                    # Also check for JSON content that needs re-serialization
+                    json_path = f"{current_path}(json)"
+                    if any(path.startswith(json_path) for path in all_detections.keys()):
+                        try:
+                            import json
+                            parsed_json = json.loads(item)
+                            # Apply masking to the parsed JSON
+                            self._apply_pii_masking_to_parsed_json(parsed_json, json_path, all_detections)
+                            # Re-serialize with masked data
+                            data[i] = json.dumps(parsed_json, ensure_ascii=False, separators=(',', ':'))
+                            modified = True
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                elif item_modified:
+                    modified = True
+
+                has_detections = has_detections or item_detections
+
+        # For other types (int, bool, None, etc.), no processing needed
+
+        return modified, has_detections
+
+    def _apply_pii_masking_to_parsed_json(self, data: Any, base_path: str, all_detections: dict) -> None:
+        """
+        Apply PII masking to parsed JSON data using detections that were already found.
+
+        Args:
+            data: The parsed JSON data structure
+            base_path: The base path for this JSON data
+            all_detections: Dictionary containing all PII detections
+        """
+        if isinstance(data, str):
+            # Check if this path has detections
+            current_detections = all_detections.get(base_path, {})
+            if current_detections:
+                # This won't work since strings are immutable, but the caller handles assignment
+                return self.detector.mask(data, current_detections)
+
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                current_path = f"{base_path}.{key}"
+                if isinstance(value, str):
+                    detections = all_detections.get(current_path, {})
+                    if detections:
+                        data[key] = self.detector.mask(value, detections)
+                else:
+                    self._apply_pii_masking_to_parsed_json(value, current_path, all_detections)
+
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                current_path = f"{base_path}[{i}]"
+                if isinstance(item, str):
+                    detections = all_detections.get(current_path, {})
+                    if detections:
+                        data[i] = self.detector.mask(item, detections)
+                else:
+                    self._apply_pii_masking_to_parsed_json(item, current_path, all_detections)
 
     async def shutdown(self) -> None:
         """Cleanup when plugin shuts down."""
