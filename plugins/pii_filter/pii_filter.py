@@ -27,6 +27,10 @@ from mcpgateway.plugins.framework.plugin_types import (
     PromptPosthookResult,
     PromptPrehookPayload,
     PromptPrehookResult,
+    ToolPreInvokePayload,
+    ToolPreInvokeResult,
+    ToolPostInvokePayload,
+    ToolPostInvokeResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -637,6 +641,190 @@ class PIIFilterPlugin(Plugin):
             return PromptPosthookResult(modified_payload=payload)
 
         return PromptPosthookResult()
+
+    async def tool_pre_invoke(self, payload: ToolPreInvokePayload, context: PluginContext) -> ToolPreInvokeResult:
+        """Detect and mask PII in tool arguments before invocation.
+
+        Args:
+            payload: The tool payload containing arguments.
+            context: Plugin execution context.
+
+        Returns:
+            Result with potentially modified tool arguments.
+        """
+        if not payload.args:
+            return ToolPreInvokeResult()
+
+        modified = False
+        all_detections = {}
+
+        for key, value in payload.args.items():
+            if isinstance(value, str):
+                detections = self.detector.detect(value)
+
+                if detections:
+                    all_detections[f"arg_{key}"] = detections
+                    self.detection_count += sum(len(items) for items in detections.values())
+
+                    if self.pii_config.log_detections:
+                        logger.warning(
+                            f"PII detected in tool argument '{key}': "
+                            f"{', '.join(detections.keys())}"
+                        )
+
+                    # Check if we should block
+                    if self.pii_config.block_on_detection:
+                        violation = PluginViolation(
+                            reason="PII detected in tool arguments",
+                            description=f"Detected {', '.join(detections.keys())} in argument '{key}'",
+                            code="PII_DETECTED_IN_TOOL_ARGS",
+                            details={
+                                "argument": key,
+                                "detected_types": list(detections.keys()),
+                                "count": sum(len(items) for items in detections.values())
+                            }
+                        )
+                        return ToolPreInvokeResult(continue_processing=False, violation=violation)
+
+                    # Mask the PII
+                    masked_value = self.detector.mask(value, detections)
+                    payload.args[key] = masked_value
+                    modified = True
+                    self.masked_count += sum(len(items) for items in detections.values())
+
+        # Store detection metadata
+        if all_detections and self.pii_config.include_detection_details:
+            if "pii_detections" not in context.metadata:
+                context.metadata["pii_detections"] = {}
+
+            context.metadata["pii_detections"]["tool_pre_invoke"] = {
+                "detected": True,
+                "arguments": list(all_detections.keys()),
+                "types": list(set(
+                    pii_type
+                    for arg_detections in all_detections.values()
+                    for pii_type in arg_detections.keys()
+                )),
+                "total_count": sum(
+                    len(items)
+                    for arg_detections in all_detections.values()
+                    for items in arg_detections.values()
+                )
+            }
+
+        if modified:
+            return ToolPreInvokeResult(modified_payload=payload)
+
+        return ToolPreInvokeResult()
+
+    async def tool_post_invoke(self, payload: ToolPostInvokePayload, context: PluginContext) -> ToolPostInvokeResult:
+        """Detect and mask PII in tool results after invocation.
+
+        Args:
+            payload: The tool result payload.
+            context: Plugin execution context.
+
+        Returns:
+            Result with potentially modified tool results.
+        """
+        if not payload.result:
+            return ToolPostInvokeResult()
+
+        modified = False
+        all_detections = {}
+
+        # Handle string results
+        if isinstance(payload.result, str):
+            detections = self.detector.detect(payload.result)
+            if detections:
+                all_detections["result"] = detections
+                self.detection_count += sum(len(items) for items in detections.values())
+
+                if self.pii_config.log_detections:
+                    logger.warning(f"PII detected in tool result: {', '.join(detections.keys())}")
+
+                # Check if we should block
+                if self.pii_config.block_on_detection:
+                    violation = PluginViolation(
+                        reason="PII detected in tool result",
+                        description=f"Detected {', '.join(detections.keys())} in tool output",
+                        code="PII_DETECTED_IN_TOOL_RESULT",
+                        details={
+                            "detected_types": list(detections.keys()),
+                            "count": sum(len(items) for items in detections.values())
+                        }
+                    )
+                    return ToolPostInvokeResult(continue_processing=False, violation=violation)
+
+                # Mask the PII
+                payload.result = self.detector.mask(payload.result, detections)
+                modified = True
+                self.masked_count += sum(len(items) for items in detections.values())
+
+        # Handle dictionary results
+        elif isinstance(payload.result, dict):
+            for key, value in payload.result.items():
+                if isinstance(value, str):
+                    detections = self.detector.detect(value)
+                    if detections:
+                        all_detections[f"result_{key}"] = detections
+                        self.detection_count += sum(len(items) for items in detections.values())
+
+                        if self.pii_config.log_detections:
+                            logger.warning(
+                                f"PII detected in tool result field '{key}': "
+                                f"{', '.join(detections.keys())}"
+                            )
+
+                        # Check if we should block
+                        if self.pii_config.block_on_detection:
+                            violation = PluginViolation(
+                                reason="PII detected in tool result",
+                                description=f"Detected {', '.join(detections.keys())} in result field '{key}'",
+                                code="PII_DETECTED_IN_TOOL_RESULT",
+                                details={
+                                    "field": key,
+                                    "detected_types": list(detections.keys()),
+                                    "count": sum(len(items) for items in detections.values())
+                                }
+                            )
+                            return ToolPostInvokeResult(continue_processing=False, violation=violation)
+
+                        # Mask the PII
+                        payload.result[key] = self.detector.mask(value, detections)
+                        modified = True
+                        self.masked_count += sum(len(items) for items in detections.values())
+
+        # Store detection metadata
+        if all_detections and self.pii_config.include_detection_details:
+            if "pii_detections" not in context.metadata:
+                context.metadata["pii_detections"] = {}
+
+            context.metadata["pii_detections"]["tool_post_invoke"] = {
+                "detected": True,
+                "fields": list(all_detections.keys()),
+                "types": list(set(
+                    pii_type
+                    for field_detections in all_detections.values()
+                    for pii_type in field_detections.keys()
+                )),
+                "total_count": sum(
+                    len(items)
+                    for field_detections in all_detections.values()
+                    for items in field_detections.values()
+                )
+            }
+
+        # Update summary statistics
+        context.metadata["pii_filter_stats"] = {
+            "total_detections": self.detection_count,
+            "total_masked": self.masked_count
+        }
+
+        if modified:
+            return ToolPostInvokeResult(modified_payload=payload)
+
+        return ToolPostInvokeResult()
 
     async def shutdown(self) -> None:
         """Cleanup when plugin shuts down."""
