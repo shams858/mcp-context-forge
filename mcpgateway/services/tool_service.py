@@ -576,6 +576,7 @@ class ToolService:
         Raises:
             ToolNotFoundError: If tool not found.
             ToolInvocationError: If invocation fails.
+            PluginViolationError: If plugin blocks tool invocation.
 
         Examples:
             >>> from mcpgateway.services.tool_service import ToolService
