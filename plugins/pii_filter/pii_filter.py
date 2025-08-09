@@ -652,7 +652,8 @@ class PIIFilterPlugin(Plugin):
         Returns:
             Result with potentially modified tool arguments.
         """
-        print(f"tool_pre_invoke: {payload.args} {payload} {context}")
+        logger.debug(f"Processing tool pre-invoke for tool '{payload.name}' with {len(payload.args) if payload.args else 0} arguments")
+
         if not payload.args:
             return ToolPreInvokeResult()
 
@@ -661,6 +662,17 @@ class PIIFilterPlugin(Plugin):
 
         # Use intelligent nested processing for tool arguments
         modified, detections = self._process_nested_data_for_pii(payload.args, "args", all_detections)
+
+        if detections:
+            detected_types = list(set(
+                pii_type
+                for arg_detections in all_detections.values()
+                for pii_type in arg_detections.keys()
+            ))
+            if self.pii_config.log_detections:
+                logger.warning(
+                    f"PII detected in tool '{payload.name}' arguments: {', '.join(map(str, detected_types))}"
+                )
 
         if detections and self.pii_config.block_on_detection:
             violation = PluginViolation(
@@ -703,6 +715,7 @@ class PIIFilterPlugin(Plugin):
             }
 
         if modified:
+            logger.info(f"Modified tool '{payload.name}' arguments to mask PII")
             return ToolPreInvokeResult(modified_payload=payload)
 
         return ToolPreInvokeResult()
@@ -717,15 +730,13 @@ class PIIFilterPlugin(Plugin):
         Returns:
             Result with potentially modified tool results.
         """
+        logger.debug(f"Processing tool post-invoke for tool '{payload.name}', result type: {type(payload.result).__name__}")
+
         if not payload.result:
             return ToolPostInvokeResult()
 
-        print(f"tool_post_invoke: {payload.result} {payload.name}")
-
         modified = False
         all_detections = {}
-
-        print(f"type of payload.result: {type(payload.result)}")
 
         # Handle string results
         if isinstance(payload.result, str):
@@ -805,6 +816,7 @@ class PIIFilterPlugin(Plugin):
         }
 
         if modified:
+            logger.info(f"Modified tool '{payload.name}' result to mask PII")
             return ToolPostInvokeResult(modified_payload=payload)
 
         return ToolPostInvokeResult()
