@@ -1439,6 +1439,7 @@ class GatewayService:
             # Handle OAuth authentication
             if auth_type == "oauth" and oauth_config:
                 try:
+                    print(f"oauth_config: {oauth_config}")
                     access_token = await self.oauth_manager.get_access_token(oauth_config)
                     authentication = {"Authorization": f"Bearer {access_token}"}
                 except Exception as e:
