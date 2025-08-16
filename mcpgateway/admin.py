@@ -34,12 +34,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import httpx
 from pydantic import ValidationError
 from pydantic_core import ValidationError as CoreValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 # First-Party
 from mcpgateway.config import settings
-from mcpgateway.db import get_db, GlobalConfig
+from mcpgateway.db import get_db, GlobalConfig, Gateway as DbGateway
 from mcpgateway.models import LogLevel
 from mcpgateway.schemas import (
     GatewayCreate,
@@ -2613,6 +2614,21 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
             except (json.JSONDecodeError, ValueError):
                 auth_headers = []
 
+        # Parse OAuth configuration if present
+        oauth_config_json = str(form.get("oauth_config"))
+        oauth_config: Optional[dict[str, Any]] = None
+        if oauth_config_json and oauth_config_json != "None":
+            try:
+                oauth_config = json.loads(oauth_config_json)
+                # Encrypt the client secret if present
+                if oauth_config and "client_secret" in oauth_config:
+                    from mcpgateway.utils.oauth_encryption import get_oauth_encryption
+                    encryption = get_oauth_encryption(settings.auth_encryption_secret)
+                    oauth_config["client_secret"] = encryption.encrypt_secret(oauth_config["client_secret"])
+            except (json.JSONDecodeError, ValueError) as e:
+                LOGGER.error(f"Failed to parse OAuth config: {e}")
+                oauth_config = None
+
         # Handle passthrough_headers
         passthrough_headers = str(form.get("passthrough_headers"))
         if passthrough_headers and passthrough_headers.strip():
@@ -2637,6 +2653,7 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
             auth_header_key=str(form.get("auth_header_key", "")),
             auth_header_value=str(form.get("auth_header_value", "")),
             auth_headers=auth_headers if auth_headers else None,
+            oauth_config=oauth_config,
             passthrough_headers=passthrough_headers,
         )
     except KeyError as e:
@@ -2667,6 +2684,75 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
         return JSONResponse(content=ErrorFormatter.format_database_error(ex), status_code=409)
     except Exception as ex:
         return JSONResponse(content={"message": str(ex), "success": False}, status_code=500)
+
+
+@admin_router.get("/oauth/callback")
+async def oauth_callback(
+    code: str,
+    state: str,
+    gateway_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: str = Depends(require_auth)
+) -> JSONResponse:
+    """Handle OAuth authorization code callback.
+
+    Args:
+        code: Authorization code from OAuth provider
+        state: State parameter for CSRF protection
+        gateway_id: ID of the gateway being configured
+        request: FastAPI request
+        db: Database session
+        user: Authenticated user
+
+    Returns:
+        JSON response indicating success or failure
+    """
+    try:
+        # Get the gateway
+        gateway = db.execute(
+            select(DbGateway).where(DbGateway.id == gateway_id)
+        ).scalar_one_or_none()
+
+        if not gateway:
+            return JSONResponse(
+                content={"success": False, "message": "Gateway not found"},
+                status_code=404
+            )
+
+        if not gateway.oauth_config:
+            return JSONResponse(
+                content={"success": False, "message": "Gateway has no OAuth configuration"},
+                status_code=400
+            )
+
+        # Exchange authorization code for access token
+        from mcpgateway.services.oauth_manager import OAuthManager
+        oauth_manager = OAuthManager()
+
+        access_token = await oauth_manager.exchange_code_for_token(
+            gateway.oauth_config,
+            code,
+            state
+        )
+
+        # Store the access token temporarily (in production, you might want to store this securely)
+        # For now, we'll just return success
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "OAuth authorization successful",
+                "access_token": access_token[:10] + "..."  # Show first 10 chars for verification
+            },
+            status_code=200
+        )
+
+    except Exception as e:
+        LOGGER.error(f"OAuth callback failed: {e}")
+        return JSONResponse(
+            content={"success": False, "message": f"OAuth callback failed: {str(e)}"},
+            status_code=500
+        )
 
 
 @admin_router.post("/gateways/{gateway_id}/edit")

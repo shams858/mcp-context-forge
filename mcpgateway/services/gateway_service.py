@@ -76,6 +76,7 @@ from mcpgateway.db import SessionLocal
 from mcpgateway.db import Tool as DbTool
 from mcpgateway.observability import create_span
 from mcpgateway.schemas import GatewayCreate, GatewayRead, GatewayUpdate, PromptCreate, ResourceCreate, ToolCreate
+from mcpgateway.services.oauth_manager import OAuthManager
 
 # logging.getLogger("httpx").setLevel(logging.WARNING)  # Disables httpx logs for regular health checks
 from mcpgateway.services.logging_service import LoggingService
@@ -230,6 +231,10 @@ class GatewayService:
         self._pending_responses = {}
         self.tool_service = ToolService()
         self._gateway_failure_counts: dict[str, int] = {}
+        self.oauth_manager = OAuthManager(
+            request_timeout=int(os.getenv("OAUTH_REQUEST_TIMEOUT", "30")),
+            max_retries=int(os.getenv("OAUTH_MAX_RETRIES", "3"))
+        )
 
         # For health checks, we determine the leader instance.
         self.redis_url = settings.redis_url if settings.cache_type == "redis" else None
@@ -447,7 +452,10 @@ class GatewayService:
                 header_dict = {h["key"]: h["value"] for h in gateway.auth_headers if h.get("key")}
                 auth_value = encode_auth(header_dict)  # Encode the dict for consistency
 
-            capabilities, tools, resources, prompts = await self._initialize_gateway(normalized_url, auth_value, gateway.transport)
+            oauth_config = getattr(gateway, "oauth_config", None)
+            capabilities, tools, resources, prompts = await self._initialize_gateway(
+                normalized_url, auth_value, gateway.transport, auth_type, oauth_config
+            )
 
             tools = [
                 DbTool(
@@ -502,6 +510,7 @@ class GatewayService:
                 last_seen=datetime.now(timezone.utc),
                 auth_type=auth_type,
                 auth_value=auth_value,
+                oauth_config=oauth_config,
                 tools=tools,
                 resources=db_resources,
                 prompts=db_prompts,
@@ -671,7 +680,10 @@ class GatewayService:
                 # Try to reinitialize connection if URL changed
                 if gateway_update.url is not None:
                     try:
-                        capabilities, tools, resources, prompts = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport)
+                        capabilities, tools, resources, prompts = await self._initialize_gateway(
+                            gateway.url, gateway.auth_value, gateway.transport,
+                            gateway.auth_type, gateway.oauth_config
+                        )
                         new_tool_names = [tool.name for tool in tools]
                         new_resource_uris = [resource.uri for resource in resources]
                         new_prompt_names = [prompt.name for prompt in prompts]
@@ -858,7 +870,10 @@ class GatewayService:
                     self._active_gateways.add(gateway.url)
                     # Try to initialize if activating
                     try:
-                        capabilities, tools, resources, prompts = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport)
+                        capabilities, tools, resources, prompts = await self._initialize_gateway(
+                            gateway.url, gateway.auth_value, gateway.transport,
+                            gateway.auth_type, gateway.oauth_config
+                        )
                         new_tool_names = [tool.name for tool in tools]
                         new_resource_uris = [resource.uri for resource in resources]
                         new_prompt_names = [prompt.name for prompt in prompts]
@@ -1371,7 +1386,8 @@ class GatewayService:
             self._event_subscribers.remove(queue)
 
     async def _initialize_gateway(
-        self, url: str, authentication: Optional[Dict[str, str]] = None, transport: str = "SSE"
+        self, url: str, authentication: Optional[Dict[str, str]] = None, transport: str = "SSE",
+        auth_type: Optional[str] = None, oauth_config: Optional[Dict[str, Any]] = None
     ) -> tuple[Dict[str, Any], List[ToolCreate], List[ResourceCreate], List[PromptCreate]]:
         """Initialize connection to a gateway and retrieve its capabilities.
 
@@ -1383,6 +1399,8 @@ class GatewayService:
             url: Gateway URL to connect to
             authentication: Optional authentication headers for the connection
             transport: Transport protocol - "SSE" or "StreamableHTTP"
+            auth_type: Authentication type - "basic", "bearer", "headers", "oauth" or None
+            oauth_config: OAuth configuration if auth_type is "oauth"
 
         Returns:
             tuple[Dict[str, Any], List[ToolCreate], List[ResourceCreate], List[PromptCreate]]:
@@ -1417,6 +1435,15 @@ class GatewayService:
         try:
             if authentication is None:
                 authentication = {}
+
+            # Handle OAuth authentication
+            if auth_type == "oauth" and oauth_config:
+                try:
+                    access_token = await self.oauth_manager.get_access_token(oauth_config)
+                    authentication = {"Authorization": f"Bearer {access_token}"}
+                except Exception as e:
+                    logger.error(f"Failed to obtain OAuth access token: {e}")
+                    raise GatewayConnectionError(f"OAuth authentication failed: {str(e)}")
 
             async def connect_to_sse_server(server_url: str, authentication: Optional[Dict[str, str]] = None):
                 """Connect to an MCP server running with SSE transport.
