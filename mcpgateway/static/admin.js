@@ -5113,6 +5113,35 @@ async function handleGatewayFormSubmit(e) {
             }
         }
 
+        // Handle OAuth configuration
+        const authType = formData.get("auth_type");
+        if (authType === "oauth") {
+            const oauthConfig = {
+                grant_type: formData.get("oauth_grant_type"),
+                client_id: formData.get("oauth_client_id"),
+                client_secret: formData.get("oauth_client_secret"),
+                token_url: formData.get("oauth_token_url"),
+                scopes: formData.get("oauth_scopes") ? formData.get("oauth_scopes").split(" ").filter(s => s.trim()) : []
+            };
+
+            // Add authorization code specific fields
+            if (oauthConfig.grant_type === "authorization_code") {
+                oauthConfig.authorization_url = formData.get("oauth_authorization_url");
+                oauthConfig.redirect_uri = formData.get("oauth_redirect_uri");
+            }
+
+            // Remove individual OAuth fields and add as oauth_config
+            formData.delete("oauth_grant_type");
+            formData.delete("oauth_client_id");
+            formData.delete("oauth_client_secret");
+            formData.delete("oauth_token_url");
+            formData.delete("oauth_scopes");
+            formData.delete("oauth_authorization_url");
+            formData.delete("oauth_redirect_uri");
+
+            formData.append("oauth_config", JSON.stringify(oauthConfig));
+        }
+
         const response = await fetchWithTimeout(
             `${window.ROOT_PATH}/admin/gateways`,
             {
@@ -6170,6 +6199,18 @@ function setupFormHandlers() {
     const gatewayForm = safeGetElement("add-gateway-form");
     if (gatewayForm) {
         gatewayForm.addEventListener("submit", handleGatewayFormSubmit);
+
+        // Add OAuth authentication type change handler
+        const authTypeField = safeGetElement("auth-type-gw");
+        if (authTypeField) {
+            authTypeField.addEventListener("change", handleAuthTypeChange);
+        }
+
+        // Add OAuth grant type change handler
+        const oauthGrantTypeField = safeGetElement("oauth-grant-type-gw");
+        if (oauthGrantTypeField) {
+            oauthGrantTypeField.addEventListener("change", handleOAuthGrantTypeChange);
+        }
     }
 
     const resourceForm = safeGetElement("add-resource-form");
@@ -6250,6 +6291,52 @@ function setupFormHandlers() {
                 refreshEditors();
             }
         });
+    }
+}
+
+function handleAuthTypeChange() {
+    const authType = this.value;
+    const basicFields = safeGetElement("auth-basic-fields-gw");
+    const bearerFields = safeGetElement("auth-bearer-fields-gw");
+    const headersFields = safeGetElement("auth-headers-fields-gw");
+    const oauthFields = safeGetElement("auth-oauth-fields-gw");
+
+    // Hide all auth sections first
+    if (basicFields) basicFields.style.display = "none";
+    if (bearerFields) bearerFields.style.display = "none";
+    if (headersFields) headersFields.style.display = "none";
+    if (oauthFields) oauthFields.style.display = "none";
+
+    // Show the appropriate section
+    switch (authType) {
+        case "basic":
+            if (basicFields) basicFields.style.display = "block";
+            break;
+        case "bearer":
+            if (bearerFields) bearerFields.style.display = "block";
+            break;
+        case "authheaders":
+            if (headersFields) headersFields.style.display = "block";
+            break;
+        case "oauth":
+            if (oauthFields) oauthFields.style.display = "block";
+            break;
+        default:
+            // No auth - keep everything hidden
+            break;
+    }
+}
+
+function handleOAuthGrantTypeChange() {
+    const grantType = this.value;
+    const authCodeFields = safeGetElement("oauth-auth-code-fields-gw");
+
+    if (authCodeFields) {
+        if (grantType === "authorization_code") {
+            authCodeFields.style.display = "block";
+        } else {
+            authCodeFields.style.display = "none";
+        }
     }
 }
 
