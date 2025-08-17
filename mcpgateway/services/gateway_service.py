@@ -604,7 +604,6 @@ class GatewayService:
 
             # Now connect to MCP server with the access token
             authentication = {"Authorization": f"Bearer {access_token}"}
-            print(f"Authentication: {authentication}")
 
             # Use the existing connection logic
             if gateway.transport.upper() == "SSE":
@@ -616,14 +615,7 @@ class GatewayService:
                     "prompts": prompts
                 }
             elif gateway.transport.upper() == "STREAMABLEHTTP":
-                print(f"Connecting to streamablehttp server")
                 capabilities, tools, resources, prompts = await self.connect_to_streamablehttp_server(gateway.url, authentication)
-                print(f"Capabilities : {capabilities}")
-                print(f"Tools count: {len(tools)  }")
-                print(f"Resources count: {len(resources)}")
-                print(f"Prompts count: {len(prompts)}")
-                print(f"gateway URL: {gateway.url}")
-                print(f"gateway slug: {gateway.slug}")
 
                 # Filter out any None tools and create DbTool objects
                 tollsToAdd = []
@@ -653,37 +645,10 @@ class GatewayService:
                         logger.warning(f"Failed to create DbTool for tool {getattr(tool, 'name', 'unknown')}: {e}")
                         continue
 
-                # if tollsToAdd:
-                #     tool = tollsToAdd[0]
-                #     print("Properties of tollsToAdd[0]:")
-                #     for attr in dir(tool):
-                #         if not attr.startswith("_") and not callable(getattr(tool, attr)):
-                #             try:
-                #                 print(f"{attr}: {getattr(tool, attr)}")
-                #             except Exception as e:
-                #                 print(f"{attr}: <error: {e}>")
-
-                    print(f"Total tools to add: {len(tollsToAdd)}")
-                    print("Before add all")
-
                     # Add to DB
                     db.add_all(tollsToAdd)
-                    print("After add all")
                     db.commit()
-                    print("After commit")
 
-                    # Temporarily skip refresh to see if that's causing the issue
-                    print("Skipping refresh for now...")
-                    # for i, tool in enumerate(tollsToAdd):
-                    #     try:
-                    #         print(f"Refreshing tool {i+1}/{len(tollsToAdd)}: {getattr(tool, 'original_name', 'unknown')}")
-                    #         db.refresh(tool)
-                    #         print(f"Successfully refreshed tool {i+1}")
-                    #     except Exception as e:
-                    #         print(f"Error refreshing tool {i+1}: {e}")
-                    #         logger.error(f"Failed to refresh tool {i+1}: {e}")
-
-                    print("After commit (skipped refresh)")
                 else:
                     logger.warning("No valid tools to add to database")
 
