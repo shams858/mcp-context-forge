@@ -1549,7 +1549,19 @@ async def admin_ui(
     servers = [server.model_dump(by_alias=True) for server in await server_service.list_servers(db, include_inactive=include_inactive)]
     resources = [resource.model_dump(by_alias=True) for resource in await resource_service.list_resources(db, include_inactive=include_inactive)]
     prompts = [prompt.model_dump(by_alias=True) for prompt in await prompt_service.list_prompts(db, include_inactive=include_inactive)]
-    gateways = [gateway.model_dump(by_alias=True) for gateway in await gateway_service.list_gateways(db, include_inactive=include_inactive)]
+    gateways_raw = await gateway_service.list_gateways(db, include_inactive=include_inactive)
+    gateways = [gateway.model_dump(by_alias=True) for gateway in gateways_raw]
+
+    # Debug: Log gateway data for troubleshooting
+    # for gateway in gateways:
+    #     print("last*******************************************last")
+    #     for k, v in gateway.items():
+    #         print(f"{k}: {v}")
+    #     if gateway.get('authType') == 'oauth':
+    #         LOGGER.info(f"Gateway {gateway.get('name')} OAuth config: {gateway.get('oauthConfig')}")
+    #         LOGGER.info(f"Gateway {gateway.get('name')} OAuth config type: {type(gateway.get('oauth_config'))}")
+    #         if gateway.get('oauthConfig'):
+    #             LOGGER.info(f"Gateway {gateway.get('name')} grant_type: {gateway.get('oauthConfig', {}).get('grant_type')}")
     roots = [root.model_dump(by_alias=True) for root in await root_service.list_roots()]
     root_path = settings.app_root_path
     max_name_length = settings.validation_max_name_length
@@ -2667,8 +2679,23 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
 
     try:
         await gateway_service.register_gateway(db, gateway)
+
+        # Provide specific guidance for OAuth Authorization Code flow
+        message = "Gateway registered successfully!"
+        if oauth_config and oauth_config.get('grant_type') == 'authorization_code':
+            message = (
+                "Gateway registered successfully! 🎉\n\n"
+                "⚠️  IMPORTANT: This gateway uses OAuth Authorization Code flow.\n"
+                "You must complete the OAuth authorization before tools will work:\n\n"
+                "1. Go to the Gateways list\n"
+                "2. Click the '🔐 Authorize' button for this gateway\n"
+                "3. Complete the OAuth consent flow\n"
+                "4. Return to the admin panel\n\n"
+                "Tools will not work until OAuth authorization is completed."
+            )
+
         return JSONResponse(
-            content={"message": "Gateway registered successfully!", "success": True},
+            content={"message": message, "success": True},
             status_code=200,
         )
 
@@ -2686,73 +2713,8 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
         return JSONResponse(content={"message": str(ex), "success": False}, status_code=500)
 
 
-@admin_router.get("/oauth/callback")
-async def oauth_callback(
-    code: str,
-    state: str,
-    gateway_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    user: str = Depends(require_auth)
-) -> JSONResponse:
-    """Handle OAuth authorization code callback.
-
-    Args:
-        code: Authorization code from OAuth provider
-        state: State parameter for CSRF protection
-        gateway_id: ID of the gateway being configured
-        request: FastAPI request
-        db: Database session
-        user: Authenticated user
-
-    Returns:
-        JSON response indicating success or failure
-    """
-    try:
-        # Get the gateway
-        gateway = db.execute(
-            select(DbGateway).where(DbGateway.id == gateway_id)
-        ).scalar_one_or_none()
-
-        if not gateway:
-            return JSONResponse(
-                content={"success": False, "message": "Gateway not found"},
-                status_code=404
-            )
-
-        if not gateway.oauth_config:
-            return JSONResponse(
-                content={"success": False, "message": "Gateway has no OAuth configuration"},
-                status_code=400
-            )
-
-        # Exchange authorization code for access token
-        from mcpgateway.services.oauth_manager import OAuthManager
-        oauth_manager = OAuthManager()
-
-        access_token = await oauth_manager.exchange_code_for_token(
-            gateway.oauth_config,
-            code,
-            state
-        )
-
-        # Store the access token temporarily (in production, you might want to store this securely)
-        # For now, we'll just return success
-        return JSONResponse(
-            content={
-                "success": True,
-                "message": "OAuth authorization successful",
-                "access_token": access_token[:10] + "..."  # Show first 10 chars for verification
-            },
-            status_code=200
-        )
-
-    except Exception as e:
-        LOGGER.error(f"OAuth callback failed: {e}")
-        return JSONResponse(
-            content={"success": False, "message": f"OAuth callback failed: {str(e)}"},
-            status_code=500
-        )
+# OAuth callback is now handled by the dedicated OAuth router at /oauth/callback
+# This route has been removed to avoid conflicts with the complete implementation
 
 
 @admin_router.post("/gateways/{gateway_id}/edit")

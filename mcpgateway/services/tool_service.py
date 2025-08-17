@@ -778,12 +778,37 @@ class ToolService:
 
                     # Handle OAuth authentication for the gateway
                     if gateway and gateway.auth_type == "oauth" and gateway.oauth_config:
-                        try:
-                            access_token = await self.oauth_manager.get_access_token(gateway.oauth_config)
-                            headers = {"Authorization": f"Bearer {access_token}"}
-                        except Exception as e:
-                            logger.error(f"Failed to obtain OAuth access token for gateway {gateway.name}: {e}")
-                            raise ToolInvocationError(f"OAuth authentication failed for gateway: {str(e)}")
+                        grant_type = gateway.oauth_config.get('grant_type', 'client_credentials')
+
+                        if grant_type == 'authorization_code':
+                            # For Authorization Code flow, try to get stored tokens
+                            try:
+                                from mcpgateway.services.token_storage_service import TokenStorageService
+                                token_storage = TokenStorageService(db)
+
+                                # Try to get a valid token for any user (for now, we'll use a placeholder)
+                                # In a real implementation, you might want to specify which user's tokens to use
+                                access_token = await token_storage.get_any_valid_token (gateway.id)
+
+                                if access_token:
+                                    headers = {"Authorization": f"Bearer {access_token}"}
+                                else:
+                                    # No valid token available - user needs to complete OAuth flow
+                                    raise ToolInvocationError(
+                                        f"OAuth Authorization Code flow requires user consent. "
+                                        f"Please complete the OAuth flow for gateway '{gateway.name}' before using tools."
+                                    )
+                            except Exception as e:
+                                logger.error(f"Failed to obtain stored OAuth token for gateway {gateway.name}: {e}")
+                                raise ToolInvocationError(f"OAuth token retrieval failed for gateway: {str(e)}")
+                        else:
+                            # For Client Credentials flow, get token directly
+                            try:
+                                access_token = await self.oauth_manager.get_access_token(gateway.oauth_config)
+                                headers = {"Authorization": f"Bearer {access_token}"}
+                            except Exception as e:
+                                logger.error(f"Failed to obtain OAuth access token for gateway {gateway.name}: {e}")
+                                raise ToolInvocationError(f"OAuth authentication failed for gateway: {str(e)}")
                     else:
                         headers = decode_auth(gateway.auth_value if gateway else None)
 
