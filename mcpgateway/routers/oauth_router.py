@@ -211,9 +211,6 @@ async def oauth_callback(
                         statusDiv.innerHTML = `
                             <div style="color: #059669; padding: 15px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px;">
                                 <h4>✅ Tools Fetched Successfully!</h4>
-                                <p><strong>Tools Created:</strong> ${{result.tools_created}}</p>
-                                <p><strong>Resources:</strong> ${{result.resources}}</p>
-                                <p><strong>Prompts:</strong> ${{result.prompts}}</p>
                                 <p>${{result.message}}</p>
                             </div>
                         `;

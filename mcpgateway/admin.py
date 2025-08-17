@@ -1553,16 +1553,6 @@ async def admin_ui(
     gateways_raw = await gateway_service.list_gateways(db, include_inactive=include_inactive)
     gateways = [gateway.model_dump(by_alias=True) for gateway in gateways_raw]
 
-    # Debug: Log gateway data for troubleshooting
-    # for gateway in gateways:
-    #     print("last*******************************************last")
-    #     for k, v in gateway.items():
-    #         print(f"{k}: {v}")
-    #     if gateway.get('authType') == 'oauth':
-    #         LOGGER.info(f"Gateway {gateway.get('name')} OAuth config: {gateway.get('oauthConfig')}")
-    #         LOGGER.info(f"Gateway {gateway.get('name')} OAuth config type: {type(gateway.get('oauth_config'))}")
-    #         if gateway.get('oauthConfig'):
-    #             LOGGER.info(f"Gateway {gateway.get('name')} grant_type: {gateway.get('oauthConfig', {}).get('grant_type')}")
     roots = [root.model_dump(by_alias=True) for root in await root_service.list_roots()]
     root_path = settings.app_root_path
     max_name_length = settings.validation_max_name_length
