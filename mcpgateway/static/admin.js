@@ -5977,6 +5977,16 @@ document.addEventListener("DOMContentLoaded", () => {
         // 4. Handle initial tab/state
         initializeTabState();
 
+        // 5. Set up form validation
+        setupFormValidation();
+
+        // 6. Setup bulk import modal
+        try {
+            setupBulkImportModal();
+        } catch (error) {
+            console.error("Error setting up bulk import modal:", error);
+        }
+
         // // ✅ 4.1 Set up tab button click handlers
         // document.querySelectorAll('.tab-button').forEach(button => {
         //     button.addEventListener('click', () => {
@@ -5989,9 +5999,6 @@ document.addEventListener("DOMContentLoaded", () => {
         //         document.getElementById(tabId).classList.remove('hidden');
         //     });
         // });
-
-        // 5. Set up form validation
-        setupFormValidation();
 
         // Mark as initialized
         AppState.isInitialized = true;
@@ -6500,6 +6507,298 @@ window.editServer = editServer;
 window.runToolTest = runToolTest;
 window.closeModal = closeModal;
 window.testGateway = testGateway;
+
+// ===============================================
+// CONFIG EXPORT FUNCTIONALITY
+// ===============================================
+
+/**
+ * Global variables to store current config data
+ */
+let currentConfigData = null;
+let currentConfigType = null;
+let currentServerName = null;
+let currentServerId = null;
+
+/**
+ * Show the config selection modal
+ * @param {string} serverId - The server UUID
+ * @param {string} serverName - The server name
+ */
+function showConfigSelectionModal(serverId, serverName) {
+    currentServerId = serverId;
+    currentServerName = serverName;
+
+    const serverNameDisplay = safeGetElement("server-name-display");
+    if (serverNameDisplay) {
+        serverNameDisplay.textContent = serverName;
+    }
+
+    openModal("config-selection-modal");
+}
+
+/**
+ * Generate and show configuration for selected type
+ * @param {string} configType - Configuration type: 'stdio', 'sse', or 'http'
+ */
+async function generateAndShowConfig(configType) {
+    try {
+        console.log(
+            `Generating ${configType} config for server ${currentServerId}`,
+        );
+
+        // First, fetch the server details
+        const response = await fetchWithTimeout(
+            `${window.ROOT_PATH}/admin/servers/${currentServerId}`,
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const server = await response.json();
+
+        // Generate the configuration
+        const config = generateConfig(server, configType);
+
+        // Store data for modal
+        currentConfigData = config;
+        currentConfigType = configType;
+
+        // Close selection modal and show config display modal
+        closeModal("config-selection-modal");
+        showConfigDisplayModal(server, configType, config);
+
+        console.log("✓ Config generated successfully");
+    } catch (error) {
+        console.error("Error generating config:", error);
+        const errorMessage = handleFetchError(error, "generate configuration");
+        showErrorMessage(errorMessage);
+    }
+}
+
+/**
+ * Export server configuration in specified format
+ * @param {string} serverId - The server UUID
+ * @param {string} configType - Configuration type: 'stdio', 'sse', or 'http'
+ */
+async function exportServerConfig(serverId, configType) {
+    try {
+        console.log(`Exporting ${configType} config for server ${serverId}`);
+
+        // First, fetch the server details
+        const response = await fetchWithTimeout(
+            `${window.ROOT_PATH}/admin/servers/${serverId}`,
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const server = await response.json();
+
+        // Generate the configuration
+        const config = generateConfig(server, configType);
+
+        // Store data for modal
+        currentConfigData = config;
+        currentConfigType = configType;
+        currentServerName = server.name;
+
+        // Show the modal with the config
+        showConfigDisplayModal(server, configType, config);
+
+        console.log("✓ Config generated successfully");
+    } catch (error) {
+        console.error("Error generating config:", error);
+        const errorMessage = handleFetchError(error, "generate configuration");
+        showErrorMessage(errorMessage);
+    }
+}
+
+/**
+ * Generate configuration object based on server and type
+ * @param {Object} server - Server object from API
+ * @param {string} configType - Configuration type
+ * @returns {Object} - Generated configuration object
+ */
+function generateConfig(server, configType) {
+    const currentHost = window.location.hostname;
+    const currentPort =
+        window.location.port ||
+        (window.location.protocol === "https:" ? "443" : "80");
+    const protocol = window.location.protocol;
+    const baseUrl = `${protocol}//${currentHost}${currentPort !== "80" && currentPort !== "443" ? ":" + currentPort : ""}`;
+
+    // Clean server name for use as config key (alphanumeric and hyphens only)
+    const cleanServerName = server.name
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+    switch (configType) {
+        case "stdio":
+            return {
+                mcpServers: {
+                    [cleanServerName]: {
+                        command: "python",
+                        args: ["-m", "mcpgateway.wrapper"],
+                        env: {
+                            MCP_AUTH_TOKEN: "your-token-here",
+                            MCP_SERVER_CATALOG_URLS: `${baseUrl}/servers/${server.id}`,
+                            MCP_TOOL_CALL_TIMEOUT: "120",
+                        },
+                    },
+                },
+            };
+
+        case "sse":
+            return {
+                mcpServers: {
+                    [cleanServerName]: {
+                        type: "sse",
+                        url: `${baseUrl}/servers/${server.id}/sse`,
+                        headers: {
+                            Authorization: "Bearer your-token-here",
+                        },
+                    },
+                },
+            };
+
+        case "http":
+            return {
+                mcpServers: {
+                    [cleanServerName]: {
+                        type: "http",
+                        url: `${baseUrl}/servers/${server.id}`,
+                        headers: {
+                            Authorization: "Bearer your-token-here",
+                        },
+                    },
+                },
+            };
+
+        default:
+            throw new Error(`Unknown config type: ${configType}`);
+    }
+}
+
+/**
+ * Show the config display modal with generated configuration
+ * @param {Object} server - Server object
+ * @param {string} configType - Configuration type
+ * @param {Object} config - Generated configuration
+ */
+function showConfigDisplayModal(server, configType, config) {
+    const descriptions = {
+        stdio: "Configuration for Claude Desktop, CLI tools, and stdio-based MCP clients",
+        sse: "Configuration for LangChain, LlamaIndex, and other SSE-based frameworks",
+        http: "Configuration for REST clients and HTTP-based MCP integrations",
+    };
+
+    const usageInstructions = {
+        stdio: "Save as .mcp.json in your user directory or use in Claude Desktop settings",
+        sse: "Use with MCP client libraries that support Server-Sent Events transport",
+        http: "Use with HTTP clients or REST API wrappers for MCP protocol",
+    };
+
+    // Update modal content
+    const descriptionEl = safeGetElement("config-description");
+    const usageEl = safeGetElement("config-usage");
+    const contentEl = safeGetElement("config-content");
+
+    if (descriptionEl) {
+        descriptionEl.textContent = `${descriptions[configType]} for server "${server.name}"`;
+    }
+
+    if (usageEl) {
+        usageEl.textContent = usageInstructions[configType];
+    }
+
+    if (contentEl) {
+        contentEl.value = JSON.stringify(config, null, 2);
+    }
+
+    // Update title and open the modal
+    const titleEl = safeGetElement("config-display-title");
+    if (titleEl) {
+        titleEl.textContent = `${configType.toUpperCase()} Configuration for ${server.name}`;
+    }
+    openModal("config-display-modal");
+}
+
+/**
+ * Copy configuration to clipboard
+ */
+async function copyConfigToClipboard() {
+    try {
+        const contentEl = safeGetElement("config-content");
+        if (!contentEl) {
+            throw new Error("Config content not found");
+        }
+
+        await navigator.clipboard.writeText(contentEl.value);
+        showSuccessMessage("Configuration copied to clipboard!");
+    } catch (error) {
+        console.error("Error copying to clipboard:", error);
+
+        // Fallback: select the text for manual copying
+        const contentEl = safeGetElement("config-content");
+        if (contentEl) {
+            contentEl.select();
+            contentEl.setSelectionRange(0, 99999); // For mobile devices
+            showErrorMessage("Please copy the selected text manually (Ctrl+C)");
+        } else {
+            showErrorMessage("Failed to copy configuration");
+        }
+    }
+}
+
+/**
+ * Download configuration as JSON file
+ */
+function downloadConfig() {
+    if (!currentConfigData || !currentConfigType || !currentServerName) {
+        showErrorMessage("No configuration data available");
+        return;
+    }
+
+    try {
+        const content = JSON.stringify(currentConfigData, null, 2);
+        const blob = new Blob([content], { type: "application/json" });
+        const url = window.URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${currentServerName}-${currentConfigType}-config.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        showSuccessMessage(`Configuration downloaded as ${a.download}`);
+    } catch (error) {
+        console.error("Error downloading config:", error);
+        showErrorMessage("Failed to download configuration");
+    }
+}
+
+/**
+ * Go back to config selection modal
+ */
+function goBackToSelection() {
+    closeModal("config-display-modal");
+    openModal("config-selection-modal");
+}
+
+// Export functions to global scope immediately after definition
+window.showConfigSelectionModal = showConfigSelectionModal;
+window.generateAndShowConfig = generateAndShowConfig;
+window.exportServerConfig = exportServerConfig;
+window.copyConfigToClipboard = copyConfigToClipboard;
+window.downloadConfig = downloadConfig;
+window.goBackToSelection = goBackToSelection;
 
 // ===============================================
 // TAG FILTERING FUNCTIONALITY
@@ -7075,3 +7374,224 @@ async function fetchToolsForGateway(gatewayId, gatewayName) {
 window.fetchToolsForGateway = fetchToolsForGateway;
 
 console.log("🛡️ ContextForge MCP Gateway admin.js initialized");
+
+// ===================================================================
+// BULK IMPORT TOOLS — MODAL WIRING
+// ===================================================================
+
+function setupBulkImportModal() {
+    const openBtn = safeGetElement("open-bulk-import", true);
+    const modalId = "bulk-import-modal";
+    const modal = safeGetElement(modalId, true);
+
+    if (!openBtn || !modal) {
+        console.warn(
+            "Bulk Import modal wiring skipped (missing button or modal).",
+        );
+        return;
+    }
+
+    // avoid double-binding if admin.js gets evaluated more than once
+    if (openBtn.dataset.wired === "1") {
+        return;
+    }
+    openBtn.dataset.wired = "1";
+
+    const closeBtn = safeGetElement("close-bulk-import", true);
+    const backdrop = safeGetElement("bulk-import-backdrop", true);
+    const resultEl = safeGetElement("import-result", true);
+
+    const focusTarget =
+        modal?.querySelector("#tools_json") ||
+        modal?.querySelector("#tools_file") ||
+        modal?.querySelector("[data-autofocus]");
+
+    // helpers
+    const open = (e) => {
+        if (e) {
+            e.preventDefault();
+        }
+        // clear previous results each time we open
+        if (resultEl) {
+            resultEl.innerHTML = "";
+        }
+        openModal(modalId);
+        // prevent background scroll
+        document.documentElement.classList.add("overflow-hidden");
+        document.body.classList.add("overflow-hidden");
+        if (focusTarget) {
+            setTimeout(() => focusTarget.focus(), 0);
+        }
+        return false;
+    };
+
+    const close = () => {
+        // also clear results on close to keep things tidy
+        closeModal(modalId, "import-result");
+        document.documentElement.classList.remove("overflow-hidden");
+        document.body.classList.remove("overflow-hidden");
+    };
+
+    // wire events
+    openBtn.addEventListener("click", open);
+
+    if (closeBtn) {
+        closeBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            close();
+        });
+    }
+
+    // click on backdrop only (not the dialog content) closes the modal
+    if (backdrop) {
+        backdrop.addEventListener("click", (e) => {
+            if (e.target === backdrop) {
+                close();
+            }
+        });
+    }
+
+    // ESC to close
+    modal.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            e.stopPropagation();
+            close();
+        }
+    });
+
+    // FORM SUBMISSION → handle bulk import
+    const form = safeGetElement("bulk-import-form", true);
+    if (form) {
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const resultEl = safeGetElement("import-result", true);
+            const indicator = safeGetElement("bulk-import-indicator", true);
+
+            try {
+                const formData = new FormData();
+
+                // Get JSON from textarea or file
+                const jsonTextarea = form?.querySelector('[name="tools_json"]');
+                const fileInput = form?.querySelector('[name="tools_file"]');
+
+                let hasData = false;
+
+                // Check for file upload first (takes precedence)
+                if (fileInput && fileInput.files.length > 0) {
+                    formData.append("tools_file", fileInput.files[0]);
+                    hasData = true;
+                } else if (jsonTextarea && jsonTextarea.value.trim()) {
+                    // Validate JSON before sending
+                    try {
+                        const toolsData = JSON.parse(jsonTextarea.value);
+                        if (!Array.isArray(toolsData)) {
+                            throw new Error("JSON must be an array of tools");
+                        }
+                        formData.append("tools", jsonTextarea.value);
+                        hasData = true;
+                    } catch (err) {
+                        if (resultEl) {
+                            resultEl.innerHTML = `
+                                <div class="mt-2 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                                    <p class="font-semibold">Invalid JSON</p>
+                                    <p class="text-sm mt-1">${escapeHtml(err.message)}</p>
+                                </div>
+                            `;
+                        }
+                        return;
+                    }
+                }
+
+                if (!hasData) {
+                    if (resultEl) {
+                        resultEl.innerHTML = `
+                            <div class="mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                                <p class="text-sm">Please provide JSON data or upload a file</p>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // Show loading state
+                if (indicator) {
+                    indicator.style.display = "flex";
+                }
+
+                // Submit to backend
+                const response = await fetchWithTimeout(
+                    `${window.ROOT_PATH}/admin/tools/import`,
+                    {
+                        method: "POST",
+                        body: formData,
+                    },
+                );
+
+                const result = await response.json();
+
+                // Display results
+                if (resultEl) {
+                    if (result.success) {
+                        resultEl.innerHTML = `
+                            <div class="mt-2 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+                                <p class="font-semibold">Import Successful</p>
+                                <p class="text-sm mt-1">${escapeHtml(result.message)}</p>
+                            </div>
+                        `;
+
+                        // Close modal and refresh page after delay
+                        setTimeout(() => {
+                            closeModal("bulk-import-modal");
+                            window.location.reload();
+                        }, 2000);
+                    } else if (result.imported > 0) {
+                        // Partial success
+                        let detailsHtml = "";
+                        if (result.details && result.details.failed) {
+                            detailsHtml =
+                                '<ul class="mt-2 text-sm list-disc list-inside">';
+                            result.details.failed.forEach((item) => {
+                                detailsHtml += `<li><strong>${escapeHtml(item.name)}:</strong> ${escapeHtml(item.error)}</li>`;
+                            });
+                            detailsHtml += "</ul>";
+                        }
+
+                        resultEl.innerHTML = `
+                            <div class="mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                                <p class="font-semibold">Partial Import</p>
+                                <p class="text-sm mt-1">${escapeHtml(result.message)}</p>
+                                ${detailsHtml}
+                            </div>
+                        `;
+                    } else {
+                        // Complete failure
+                        resultEl.innerHTML = `
+                            <div class="mt-2 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                                <p class="font-semibold">Import Failed</p>
+                                <p class="text-sm mt-1">${escapeHtml(result.message)}</p>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.error("Bulk import error:", error);
+                if (resultEl) {
+                    resultEl.innerHTML = `
+                        <div class="mt-2 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                            <p class="font-semibold">Import Error</p>
+                            <p class="text-sm mt-1">${escapeHtml(error.message || "An unexpected error occurred")}</p>
+                        </div>
+                    `;
+                }
+            } finally {
+                // Hide loading state
+                if (indicator) {
+                    indicator.style.display = "none";
+                }
+            }
+
+            return false;
+        });
+    }
+}
