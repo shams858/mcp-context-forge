@@ -91,7 +91,6 @@ class OAuthManager:
 
         # Decrypt client secret if it's encrypted
         if len(client_secret) > 50:  # Simple heuristic: encrypted secrets are longer
-            print(f"Decrypting client secret: {client_secret}")
             try:
                 from mcpgateway.utils.oauth_encryption import get_oauth_encryption
                 from mcpgateway.config import get_settings
@@ -107,7 +106,6 @@ class OAuthManager:
                 logger.warning(f"Failed to decrypt client secret: {e}, using encrypted version")
 
         # Prepare token request data
-        print(f"decrypted_secret: {client_secret}")
         token_data = {
             'grant_type': 'client_credentials',
             'client_id': client_id,
@@ -228,7 +226,6 @@ class OAuthManager:
 
         # Decrypt client secret if it's encrypted
         if len(client_secret) > 50:  # Simple heuristic: encrypted secrets are longer
-            print(f"Decrypting client secret: {client_secret}")
             try:
                 from mcpgateway.utils.oauth_encryption import get_oauth_encryption
                 from mcpgateway.config import get_settings
@@ -243,7 +240,6 @@ class OAuthManager:
             except Exception as e:
                 logger.warning(f"Failed to decrypt client secret: {e}, using encrypted version")
 
-        print(f"decrypted_secret: {client_secret}")
         # Prepare token exchange data
         token_data = {
             'grant_type': 'authorization_code',
