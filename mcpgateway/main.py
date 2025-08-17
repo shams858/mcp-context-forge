@@ -2742,6 +2742,16 @@ app.include_router(server_router)
 app.include_router(metrics_router)
 app.include_router(tag_router)
 
+# Include OAuth router
+try:
+    # First-Party
+    from mcpgateway.routers.oauth_router import oauth_router
+
+    app.include_router(oauth_router)
+    logger.info("OAuth router included")
+except ImportError:
+    logger.debug("OAuth router not available")
+
 # Include reverse proxy router if enabled
 try:
     # First-Party

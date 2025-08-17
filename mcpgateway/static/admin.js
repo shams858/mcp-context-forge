@@ -5128,6 +5128,13 @@ async function handleGatewayFormSubmit(e) {
             if (oauthConfig.grant_type === "authorization_code") {
                 oauthConfig.authorization_url = formData.get("oauth_authorization_url");
                 oauthConfig.redirect_uri = formData.get("oauth_redirect_uri");
+
+                // Add token management options
+                oauthConfig.token_management = {
+                    store_tokens: formData.get("oauth_store_tokens") === "on",
+                    auto_refresh: formData.get("oauth_auto_refresh") === "on",
+                    refresh_threshold_seconds: 300
+                };
             }
 
             // Remove individual OAuth fields and add as oauth_config
@@ -5138,6 +5145,8 @@ async function handleGatewayFormSubmit(e) {
             formData.delete("oauth_scopes");
             formData.delete("oauth_authorization_url");
             formData.delete("oauth_redirect_uri");
+            formData.delete("oauth_store_tokens");
+            formData.delete("oauth_auto_refresh");
 
             formData.append("oauth_config", JSON.stringify(oauthConfig));
         }
@@ -6334,8 +6343,23 @@ function handleOAuthGrantTypeChange() {
     if (authCodeFields) {
         if (grantType === "authorization_code") {
             authCodeFields.style.display = "block";
+
+            // Make authorization code specific fields required
+            const requiredFields = authCodeFields.querySelectorAll('input[type="url"]');
+            requiredFields.forEach(field => {
+                field.required = true;
+            });
+
+            // Show additional validation for required fields
+            console.log("Authorization Code flow selected - additional fields are now required");
         } else {
             authCodeFields.style.display = "none";
+
+            // Remove required validation for hidden fields
+            const requiredFields = authCodeFields.querySelectorAll('input[type="url"]');
+            requiredFields.forEach(field => {
+                field.required = false;
+            });
         }
     }
 }
@@ -6990,5 +7014,64 @@ window.addAuthHeader = addAuthHeader;
 window.removeAuthHeader = removeAuthHeader;
 window.updateAuthHeadersJSON = updateAuthHeadersJSON;
 window.loadAuthHeaders = loadAuthHeaders;
+
+/**
+ * Fetch tools from MCP server after OAuth completion for Authorization Code flow
+ * @param {string} gatewayId - ID of the gateway to fetch tools for
+ * @param {string} gatewayName - Name of the gateway for display purposes
+ */
+async function fetchToolsForGateway(gatewayId, gatewayName) {
+    const button = document.getElementById(`fetch-tools-${gatewayId}`);
+    if (!button) return;
+
+    // Disable button and show loading state
+    button.disabled = true;
+    button.textContent = '⏳ Fetching...';
+    button.className = 'inline-block bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-sm mr-2';
+
+    try {
+        const response = await fetch(`/oauth/fetch-tools/${gatewayId}`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // Success
+            button.textContent = '✅ Tools Fetched';
+            button.className = 'inline-block bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm mr-2';
+
+            // Show success message
+            showNotification(
+                `Successfully fetched ${result.tools_created} tools from ${gatewayName}`,
+                'success'
+            );
+
+            // Refresh the page to show the new tools
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+
+        } else {
+            throw new Error(result.detail || 'Failed to fetch tools');
+        }
+    } catch (error) {
+        console.error('Failed to fetch tools:', error);
+
+        // Show error state
+        button.textContent = '❌ Retry';
+        button.className = 'inline-block bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm mr-2';
+        button.disabled = false;
+
+        // Show error message
+        showNotification(
+            `Failed to fetch tools from ${gatewayName}: ${error.message}`,
+            'error'
+        );
+    }
+}
+
+// Expose fetch tools function to global scope
+window.fetchToolsForGateway = fetchToolsForGateway;
 
 console.log("🛡️ ContextForge MCP Gateway admin.js initialized");
