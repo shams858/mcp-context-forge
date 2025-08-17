@@ -559,6 +559,147 @@ class GatewayService:
             logger.error(f"Other grouped errors: {other.exceptions}")
             raise other.exceptions[0]
 
+    async def fetch_tools_after_oauth(self, db: Session, gateway_id: str) -> Dict[str, Any]:
+        """Fetch tools from MCP server after OAuth completion for Authorization Code flow.
+
+        Args:
+            db: Database session
+            gateway_id: ID of the gateway to fetch tools for
+
+        Returns:
+            Dict containing capabilities, tools, resources, and prompts
+
+        Raises:
+            GatewayConnectionError: If connection or OAuth fails
+        """
+        try:
+            # Get the gateway
+            gateway = db.execute(
+                select(DbGateway).where(DbGateway.id == gateway_id)
+            ).scalar_one_or_none()
+
+            if not gateway:
+                raise ValueError(f"Gateway {gateway_id} not found")
+
+            if not gateway.oauth_config:
+                raise ValueError(f"Gateway {gateway_id} has no OAuth configuration")
+
+            grant_type = gateway.oauth_config.get('grant_type')
+            if grant_type != 'authorization_code':
+                raise ValueError(f"Gateway {gateway_id} is not using Authorization Code flow")
+
+            # Get OAuth tokens for this gateway
+            from mcpgateway.services.token_storage_service import TokenStorageService
+            token_storage = TokenStorageService(db)
+
+            # Try to get a valid token for any user (for now, we'll use a placeholder)
+            # In a real implementation, you might want to specify which user's tokens to use
+            access_token = await token_storage.get_any_valid_token(gateway.id)
+
+            if not access_token:
+                raise GatewayConnectionError(
+                    f"No valid OAuth tokens found for gateway {gateway.name}. "
+                    "Please complete the OAuth authorization flow first."
+                )
+
+            # Now connect to MCP server with the access token
+            authentication = {"Authorization": f"Bearer {access_token}"}
+            print(f"Authentication: {authentication}")
+
+            # Use the existing connection logic
+            if gateway.transport.upper() == "SSE":
+                capabilities, tools, resources, prompts = await self.connect_to_sse_server(gateway.url, authentication)
+                return {
+                    "capabilities": capabilities,
+                    "tools": tools,
+                    "resources": resources,
+                    "prompts": prompts
+                }
+            elif gateway.transport.upper() == "STREAMABLEHTTP":
+                print(f"Connecting to streamablehttp server")
+                capabilities, tools, resources, prompts = await self.connect_to_streamablehttp_server(gateway.url, authentication)
+                print(f"Capabilities : {capabilities}")
+                print(f"Tools count: {len(tools)  }")
+                print(f"Resources count: {len(resources)}")
+                print(f"Prompts count: {len(prompts)}")
+                print(f"gateway URL: {gateway.url}")
+                print(f"gateway slug: {gateway.slug}")
+
+                # Filter out any None tools and create DbTool objects
+                tollsToAdd = []
+                for tool in tools:
+                    if tool is None:
+                        logger.warning("Skipping None tool in tools list")
+                        continue
+
+                    try:
+                        db_tool = DbTool(
+                            original_name=tool.name,
+                            original_name_slug=slugify(tool.name),
+                            url=gateway.url.rstrip('/'),
+                            description=tool.description,
+                            integration_type="MCP",  # Gateway-discovered tools are MCP type
+                            request_type=tool.request_type,
+                            headers=tool.headers,
+                            input_schema=tool.input_schema,
+                            annotations=tool.annotations,
+                            jsonpath_filter=tool.jsonpath_filter,
+                            auth_type=gateway.auth_type,
+                            auth_value=gateway.auth_value,
+                            gateway=gateway  # attach relationship to avoid NoneType during flush
+                        )
+                        tollsToAdd.append(db_tool)
+                    except Exception as e:
+                        logger.warning(f"Failed to create DbTool for tool {getattr(tool, 'name', 'unknown')}: {e}")
+                        continue
+
+                # if tollsToAdd:
+                #     tool = tollsToAdd[0]
+                #     print("Properties of tollsToAdd[0]:")
+                #     for attr in dir(tool):
+                #         if not attr.startswith("_") and not callable(getattr(tool, attr)):
+                #             try:
+                #                 print(f"{attr}: {getattr(tool, attr)}")
+                #             except Exception as e:
+                #                 print(f"{attr}: <error: {e}>")
+
+                    print(f"Total tools to add: {len(tollsToAdd)}")
+                    print("Before add all")
+
+                    # Add to DB
+                    db.add_all(tollsToAdd)
+                    print("After add all")
+                    db.commit()
+                    print("After commit")
+
+                    # Temporarily skip refresh to see if that's causing the issue
+                    print("Skipping refresh for now...")
+                    # for i, tool in enumerate(tollsToAdd):
+                    #     try:
+                    #         print(f"Refreshing tool {i+1}/{len(tollsToAdd)}: {getattr(tool, 'original_name', 'unknown')}")
+                    #         db.refresh(tool)
+                    #         print(f"Successfully refreshed tool {i+1}")
+                    #     except Exception as e:
+                    #         print(f"Error refreshing tool {i+1}: {e}")
+                    #         logger.error(f"Failed to refresh tool {i+1}: {e}")
+
+                    print("After commit (skipped refresh)")
+                else:
+                    logger.warning("No valid tools to add to database")
+
+                return {
+                    "capabilities": capabilities,
+                    "tools": tools,
+                    "resources": resources,
+                    "prompts": prompts
+                }
+            else:
+                raise ValueError(f"Unsupported transport type: {gateway.transport}")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch tools after OAuth for gateway {gateway_id}: {e}")
+            raise GatewayConnectionError(f"Failed to fetch tools after OAuth: {str(e)}")
+
     async def list_gateways(self, db: Session, include_inactive: bool = False) -> List[GatewayRead]:
         """List all registered gateways.
 
@@ -602,6 +743,21 @@ class GatewayService:
             query = query.where(DbGateway.enabled)
 
         gateways = db.execute(query).scalars().all()
+
+        # print("******************************************************************")
+        # for g in gateways:
+        #         print("----------------------------")
+        #         for attr in dir(g):
+        #             if not attr.startswith("_"):
+        #                 try:
+        #                     value = getattr(g, attr)
+        #                 except Exception:
+        #                     value = "<unreadable>"
+        #                 print(f"{attr}: {value}")
+        #         # print(f"Gateway oauth_config: {g}")
+        #         # print(f"Gateway auth_type: {g['auth_type']}")
+        # print("******************************************************************")
+
         return [GatewayRead.model_validate(g).masked() for g in gateways]
 
     async def update_gateway(self, db: Session, gateway_id: str, gateway_update: GatewayUpdate, include_inactive: bool = True) -> GatewayRead:
@@ -1438,220 +1594,37 @@ class GatewayService:
 
             # Handle OAuth authentication
             if auth_type == "oauth" and oauth_config:
-                try:
-                    print(f"oauth_config: {oauth_config}")
-                    access_token = await self.oauth_manager.get_access_token(oauth_config)
-                    authentication = {"Authorization": f"Bearer {access_token}"}
-                except Exception as e:
-                    logger.error(f"Failed to obtain OAuth access token: {e}")
-                    raise GatewayConnectionError(f"OAuth authentication failed: {str(e)}")
+                grant_type = oauth_config.get('grant_type', 'client_credentials')
 
-            async def connect_to_sse_server(server_url: str, authentication: Optional[Dict[str, str]] = None):
-                """Connect to an MCP server running with SSE transport.
-
-                Establishes an SSE connection to the MCP server, performs the
-                initialization handshake, and retrieves server capabilities,
-                tools, resources, and prompts.
-
-                Args:
-                    server_url: URL to connect to the SSE-enabled MCP server
-                    authentication: Optional authentication headers for the connection
-
-                Returns:
-                    Tuple[Dict, List[ToolCreate], List[ResourceCreate], List[PromptCreate]]:
-                        Server capabilities, list of tools, resources, and prompts
-
-                Examples:
-                    >>> # Test function signature and defaults
-                    >>> import inspect
-                    >>> sig = inspect.signature(connect_to_sse_server)
-                    >>> list(sig.parameters.keys())
-                    ['server_url', 'authentication']
-                    >>> sig.parameters['authentication'].default is None
-                    True
-                    >>> sig.parameters['server_url'].annotation
-                    <class 'str'>
-
-                    >>> # Test authentication parameter handling
-                    >>> auth = {"Authorization": "Bearer token123"}
-                    >>> isinstance(auth, dict)
-                    True
-                    >>> auth.get("Authorization", "").startswith("Bearer")
-                    True
-                """
-                if authentication is None:
+                if grant_type == 'authorization_code':
+                    # For Authorization Code flow, we can't initialize immediately
+                    # because we need user consent. Just store the configuration
+                    # and let the user complete the OAuth flow later.
+                    logger.info(f"OAuth Authorization Code flow configured for gateway. User must complete authorization before gateway can be used.")
+                    # Don't try to get access token here - it will be obtained during tool invocation
                     authentication = {}
-                # Store the context managers so they stay alive
-                decoded_auth = decode_auth(authentication)
 
-                if await self._validate_gateway_url(url=server_url, headers=decoded_auth, transport_type="SSE"):
-                    # Use async with for both sse_client and ClientSession
-                    async with sse_client(url=server_url, headers=decoded_auth) as streams:
-                        async with ClientSession(*streams) as session:
-                            # Initialize the session
-                            response = await session.initialize()
-                            capabilities = response.capabilities.model_dump(by_alias=True, exclude_none=True)
-                            logger.debug(f"Server capabilities: {capabilities}")
-
-                            response = await session.list_tools()
-                            tools = response.tools
-                            tools = [tool.model_dump(by_alias=True, exclude_none=True) for tool in tools]
-
-                            tools = [ToolCreate.model_validate(tool) for tool in tools]
-                            if tools:
-                                logger.info(f"Fetched {len(tools)} tools from gateway")
-
-                            # Fetch resources if supported
-                            resources = []
-                            logger.debug(f"Checking for resources support: {capabilities.get('resources')}")
-                            if capabilities.get("resources"):
-                                try:
-                                    response = await session.list_resources()
-                                    raw_resources = response.resources
-                                    for resource in raw_resources:
-                                        resource_data = resource.model_dump(by_alias=True, exclude_none=True)
-                                        # Convert AnyUrl to string if present
-                                        if "uri" in resource_data and hasattr(resource_data["uri"], "unicode_string"):
-                                            resource_data["uri"] = str(resource_data["uri"])
-                                        # Add default content if not present (will be fetched on demand)
-                                        if "content" not in resource_data:
-                                            resource_data["content"] = ""
-                                        try:
-                                            resources.append(ResourceCreate.model_validate(resource_data))
-                                        except Exception:
-                                            # If validation fails, create minimal resource
-                                            resources.append(
-                                                ResourceCreate(
-                                                    uri=str(resource_data.get("uri", "")),
-                                                    name=resource_data.get("name", ""),
-                                                    description=resource_data.get("description"),
-                                                    mime_type=resource_data.get("mime_type"),
-                                                    template=resource_data.get("template"),
-                                                    content="",
-                                                )
-                                            )
-                                    logger.info(f"Fetched {len(resources)} resources from gateway")
-                                except Exception as e:
-                                    logger.warning(f"Failed to fetch resources: {e}")
-
-                            # Fetch prompts if supported
-                            prompts = []
-                            logger.debug(f"Checking for prompts support: {capabilities.get('prompts')}")
-                            if capabilities.get("prompts"):
-                                try:
-                                    response = await session.list_prompts()
-                                    raw_prompts = response.prompts
-                                    for prompt in raw_prompts:
-                                        prompt_data = prompt.model_dump(by_alias=True, exclude_none=True)
-                                        # Add default template if not present
-                                        if "template" not in prompt_data:
-                                            prompt_data["template"] = ""
-                                        try:
-                                            prompts.append(PromptCreate.model_validate(prompt_data))
-                                        except Exception:
-                                            # If validation fails, create minimal prompt
-                                            prompts.append(
-                                                PromptCreate(
-                                                    name=prompt_data.get("name", ""),
-                                                    description=prompt_data.get("description"),
-                                                    template=prompt_data.get("template", ""),
-                                                )
-                                            )
-                                    logger.info(f"Fetched {len(prompts)} prompts from gateway")
-                                except Exception as e:
-                                    logger.warning(f"Failed to fetch prompts: {e}")
-
-                    return capabilities, tools, resources, prompts
-                raise GatewayConnectionError(f"Failed to initialize gateway at {url}")
-
-            async def connect_to_streamablehttp_server(server_url: str, authentication: Optional[Dict[str, str]] = None):
-                """Connect to an MCP server running with Streamable HTTP transport.
-
-                Establishes a StreamableHTTP connection to the MCP server, performs the
-                initialization handshake, and retrieves server capabilities,
-                tools, resources, and prompts.
-
-                Args:
-                    server_url: URL to connect to the server
-                    authentication: Authentication headers for connection to URL
-
-                Returns:
-                    Tuple[Dict, List[ToolCreate], List[ResourceCreate], List[PromptCreate]]:
-                        Server capabilities, list of tools, resources, and prompts
-                """
-                if authentication is None:
-                    authentication = {}
-                # Store the context managers so they stay alive
-                decoded_auth = decode_auth(authentication)
-                # The _validate_gateway_url logic is flawed for streamablehttp, so we bypass it
-                # and go straight to the client connection. The outer try/except in
-                # _initialize_gateway will handle any connection errors.
-                async with streamablehttp_client(url=server_url, headers=decoded_auth) as (read_stream, write_stream, _get_session_id):
-                    async with ClientSession(read_stream, write_stream) as session:
-                        # Initialize the session
-                        response = await session.initialize()
-                        capabilities = response.capabilities.model_dump(by_alias=True, exclude_none=True)
-                        logger.debug(f"Server capabilities: {capabilities}")
-
-                        response = await session.list_tools()
-                        tools = response.tools
-                        tools = [tool.model_dump(by_alias=True, exclude_none=True) for tool in tools]
-
-                        tools = [ToolCreate.model_validate(tool) for tool in tools]
-                        for tool in tools:
-                            tool.request_type = "STREAMABLEHTTP"
-                        if tools:
-                            logger.info(f"Fetched {len(tools)} tools from gateway")
-
-                        # Fetch resources if supported
-                        resources = []
-                        logger.debug(f"Checking for resources support: {capabilities.get('resources')}")
-                        if capabilities.get("resources"):
-                            try:
-                                response = await session.list_resources()
-                                raw_resources = response.resources
-                                resources = []
-                                for resource in raw_resources:
-                                    resource_data = resource.model_dump(by_alias=True, exclude_none=True)
-                                    # Convert AnyUrl to string if present
-                                    if "uri" in resource_data and hasattr(resource_data["uri"], "unicode_string"):
-                                        resource_data["uri"] = str(resource_data["uri"])
-                                    # Add default content if not present
-                                    if "content" not in resource_data:
-                                        resource_data["content"] = ""
-                                    resources.append(ResourceCreate.model_validate(resource_data))
-                                logger.info(f"Fetched {len(resources)} resources from gateway")
-                            except Exception as e:
-                                logger.warning(f"Failed to fetch resources: {e}")
-
-                        # Fetch prompts if supported
-                        prompts = []
-                        logger.debug(f"Checking for prompts support: {capabilities.get('prompts')}")
-                        if capabilities.get("prompts"):
-                            try:
-                                response = await session.list_prompts()
-                                raw_prompts = response.prompts
-                                prompts = []
-                                for prompt in raw_prompts:
-                                    prompt_data = prompt.model_dump(by_alias=True, exclude_none=True)
-                                    # Add default template if not present
-                                    if "template" not in prompt_data:
-                                        prompt_data["template"] = ""
-                                    prompts.append(PromptCreate.model_validate(prompt_data))
-                                logger.info(f"Fetched {len(prompts)} prompts from gateway")
-                            except Exception as e:
-                                logger.warning(f"Failed to fetch prompts: {e}")
-
-                return capabilities, tools, resources, prompts
+                    # Skip MCP server connection for Authorization Code flow
+                    # Tools will be fetched after OAuth completion
+                    return {}, [], [], []
+                else:
+                    # For Client Credentials flow, we can get the token immediately
+                    try:
+                        print(f"oauth_config: {oauth_config}")
+                        access_token = await self.oauth_manager.get_access_token(oauth_config)
+                        authentication = {"Authorization": f"Bearer {access_token}"}
+                    except Exception as e:
+                        logger.error(f"Failed to obtain OAuth access token: {e}")
+                        raise GatewayConnectionError(f"OAuth authentication failed: {str(e)}")
 
             capabilities = {}
             tools = []
             resources = []
             prompts = []
             if transport.lower() == "sse":
-                capabilities, tools, resources, prompts = await connect_to_sse_server(url, authentication)
+                capabilities, tools, resources, prompts = await self.connect_to_sse_server(url, authentication)
             elif transport.lower() == "streamablehttp":
-                capabilities, tools, resources, prompts = await connect_to_streamablehttp_server(url, authentication)
+                capabilities, tools, resources, prompts = await self.connect_to_streamablehttp_server(url, authentication)
 
             return capabilities, tools, resources, prompts
         except Exception as e:
@@ -1909,3 +1882,155 @@ class GatewayService:
         """
         for queue in self._event_subscribers:
             await queue.put(event)
+
+    async def connect_to_sse_server(self, server_url: str, authentication: Optional[Dict[str, str]] = None):
+        """Connect to an MCP server running with SSE transport."""
+        if authentication is None:
+            authentication = {}
+        # Use authentication directly instead
+
+        if await self._validate_gateway_url(url=server_url, headers=authentication, transport_type="SSE"):
+            # Use async with for both sse_client and ClientSession
+            async with sse_client(url=server_url, headers=authentication) as streams:
+                async with ClientSession(*streams) as session:
+                    # Initialize the session
+                    response = await session.initialize()
+                    capabilities = response.capabilities.model_dump(by_alias=True, exclude_none=True)
+                    logger.debug(f"Server capabilities: {capabilities}")
+
+                    response = await session.list_tools()
+                    tools = response.tools
+                    tools = [tool.model_dump(by_alias=True, exclude_none=True) for tool in tools]
+
+                    tools = [ToolCreate.model_validate(tool) for tool in tools]
+                    if tools:
+                        logger.info(f"Fetched {len(tools)} tools from gateway")
+
+                    # Fetch resources if supported
+                    resources = []
+                    logger.debug(f"Checking for resources support: {capabilities.get('resources')}")
+                    if capabilities.get("resources"):
+                        try:
+                            response = await session.list_resources()
+                            raw_resources = response.resources
+                            for resource in raw_resources:
+                                resource_data = resource.model_dump(by_alias=True, exclude_none=True)
+                                # Convert AnyUrl to string if present
+                                if "uri" in resource_data and hasattr(resource_data["uri"], "unicode_string"):
+                                    resource_data["uri"] = str(resource_data["uri"])
+                                # Add default content if not present (will be fetched on demand)
+                                if "content" not in resource_data:
+                                    resource_data["content"] = ""
+                                try:
+                                    resources.append(ResourceCreate.model_validate(resource_data))
+                                except Exception:
+                                    # If validation fails, create minimal resource
+                                    resources.append(
+                                        ResourceCreate(
+                                            uri=str(resource_data.get("uri", "")),
+                                            name=resource_data.get("name", ""),
+                                            description=resource_data.get("description"),
+                                            mime_type=resource_data.get("mime_type"),
+                                            template=resource_data.get("template"),
+                                            content="",
+                                        )
+                                    )
+                                logger.info(f"Fetched {len(resources)} resources from gateway")
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch resources: {e}")
+
+                    # Fetch prompts if supported
+                    prompts = []
+                    logger.debug(f"Checking for prompts support: {capabilities.get('prompts')}")
+                    if capabilities.get("prompts"):
+                        try:
+                            response = await session.list_prompts()
+                            raw_prompts = response.prompts
+                            for prompt in raw_prompts:
+                                prompt_data = prompt.model_dump(by_alias=True, exclude_none=True)
+                                # Add default template if not present
+                                if "template" not in prompt_data:
+                                    prompt_data["template"] = ""
+                                try:
+                                    prompts.append(PromptCreate.model_validate(prompt_data))
+                                except Exception:
+                                    # If validation fails, create minimal prompt
+                                    prompts.append(
+                                        PromptCreate(
+                                            name=prompt_data.get("name", ""),
+                                            description=prompt_data.get("description"),
+                                            template=prompt_data.get("template", ""),
+                                        )
+                                    )
+                                logger.info(f"Fetched {len(prompts)} prompts from gateway")
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch prompts: {e}")
+
+                    return capabilities, tools, resources, prompts
+        raise GatewayConnectionError(f"Failed to initialize gateway at {server_url}")
+
+    async def connect_to_streamablehttp_server(self, server_url: str, authentication: Optional[Dict[str, str]] = None):
+        """Connect to an MCP server running with Streamable HTTP transport."""
+        if authentication is None:
+            authentication = {}
+        # Use authentication directly instead
+
+        # The _validate_gateway_url logic is flawed for streamablehttp, so we bypass it
+        # and go straight to the client connection. The outer try/except in
+        # _initialize_gateway will handle any connection errors.
+        async with streamablehttp_client(url=server_url, headers=authentication) as (read_stream, write_stream, _get_session_id):
+            async with ClientSession(read_stream, write_stream) as session:
+                # Initialize the session
+                response = await session.initialize()
+                capabilities = response.capabilities.model_dump(by_alias=True, exclude_none=True)
+                logger.debug(f"Server capabilities: {capabilities}")
+
+                response = await session.list_tools()
+                tools = response.tools
+                tools = [tool.model_dump(by_alias=True, exclude_none=True) for tool in tools]
+
+                tools = [ToolCreate.model_validate(tool) for tool in tools]
+                for tool in tools:
+                    tool.request_type = "STREAMABLEHTTP"
+                if tools:
+                    logger.info(f"Fetched {len(tools)} tools from gateway")
+
+                # Fetch resources if supported
+                resources = []
+                logger.debug(f"Checking for resources support: {capabilities.get('resources')}")
+                if capabilities.get("resources"):
+                    try:
+                        response = await session.list_resources()
+                        raw_resources = response.resources
+                        resources = []
+                        for resource in raw_resources:
+                            resource_data = resource.model_dump(by_alias=True, exclude_none=True)
+                            # Convert AnyUrl to string if present
+                            if "uri" in resource_data and hasattr(resource_data["uri"], "unicode_string"):
+                                resource_data["uri"] = str(resource_data["uri"])
+                            # Add default content if not present
+                            if "content" not in resource_data:
+                                resource_data["content"] = ""
+                            resources.append(ResourceCreate.model_validate(resource_data))
+                        logger.info(f"Fetched {len(resources)} resources from gateway")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch resources: {e}")
+
+                # Fetch prompts if supported
+                prompts = []
+                logger.debug(f"Checking for prompts support: {capabilities.get('prompts')}")
+                if capabilities.get("prompts"):
+                    try:
+                        response = await session.list_prompts()
+                        raw_prompts = response.prompts
+                        prompts = []
+                        for prompt in raw_prompts:
+                            prompt_data = prompt.model_dump(by_alias=True, exclude_none=True)
+                            # Add default template if not present
+                            if "template" not in prompt_data:
+                                prompt_data["template"] = ""
+                            prompts.append(PromptCreate.model_validate(prompt_data))
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch prompts: {e}")
+
+                return capabilities, tools, resources, prompts
