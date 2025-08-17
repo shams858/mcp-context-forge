@@ -34,8 +34,6 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import httpx
 from pydantic import ValidationError
 from pydantic_core import ValidationError as CoreValidationError
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 # First-Party

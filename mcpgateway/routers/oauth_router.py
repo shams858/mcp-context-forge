@@ -8,7 +8,7 @@ This module handles OAuth 2.0 Authorization Code flow endpoints including:
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -30,15 +30,32 @@ async def initiate_oauth_flow(
     request: Request,
     db: Session = Depends(get_db)
 ) -> RedirectResponse:
-    """Initiate OAuth Authorization Code flow.
+    """
+    Initiates the OAuth 2.0 Authorization Code flow for a specified gateway.
 
-    Args:
-        gateway_id: ID of the gateway to authorize
-        request: FastAPI request object
-        db: Database session
+    This endpoint retrieves the OAuth configuration for the given gateway, validates that
+    the gateway supports the Authorization Code flow, and redirects the user to the OAuth
+    provider's authorization URL to begin the OAuth process.
 
-    Returns:
-        Redirect response to OAuth provider
+    Parameters
+    ----------
+    gateway_id : str
+        The unique identifier of the gateway to authorize.
+    request : fastapi.Request
+        The FastAPI request object.
+    db : sqlalchemy.orm.Session
+        The database session dependency.
+
+    Returns
+    -------
+    fastapi.responses.RedirectResponse
+        A redirect response to the OAuth provider's authorization URL.
+
+    Raises
+    ------
+    fastapi.HTTPException
+        If the gateway is not found, not configured for OAuth, or not using the Authorization Code flow.
+        If an unexpected error occurs during the initiation process.
     """
     try:
         # Get gateway configuration
@@ -90,7 +107,21 @@ async def oauth_callback(
     request: Request = None,
     db: Session = Depends(get_db)
 ) -> HTMLResponse:
-    """Handle OAuth callback and complete authorization."""
+    """Handle the OAuth callback and complete the authorization process.
+
+    This endpoint is called by the OAuth provider after the user authorizes access.
+    It receives the authorization code and state parameters, verifies the state,
+    retrieves the corresponding gateway configuration, and exchanges the code for an access token.
+
+    Args:
+        code (str): The authorization code returned by the OAuth provider.
+        state (str): The state parameter for CSRF protection, which encodes the gateway ID.
+        request (Request, optional): The incoming HTTP request object.
+        db (Session): The database session dependency.
+
+    Returns:
+        HTMLResponse: An HTML response indicating the result of the OAuth authorization process.
+    """
 
     try:
         # Extract gateway_id from state parameter
@@ -374,40 +405,6 @@ async def fetch_tools_after_oauth(gateway_id: str, db: Session = Depends(get_db)
 
         gateway_service = GatewayService()
         result = await gateway_service.fetch_tools_after_oauth(db, gateway_id)
-
-        # Store the tools in the database
-        # from mcpgateway.services.tool_service import ToolService
-        # tool_service = ToolService()
-
-        # # Create tools from the result
-        # tools_created = []
-        # for tool_data in result.get("tools", []):
-        #     try:
-        #         # Convert ToolCreate to dict if it's not already
-        #         if hasattr(tool_data, 'model_dump'):
-        #             tool_dict = tool_data.model_dump()
-        #         else:
-        #             tool_dict = dict(tool_data)
-
-        #         # Add gateway_id to tool data
-        #         tool_dict["gateway_id"] = gateway_id
-
-        #         # Convert dict back to ToolCreate object for register_tool
-        #         from mcpgateway.schemas import ToolCreate
-        #         tool_create_obj = ToolCreate.model_validate(tool_dict)
-
-        #         tool_created = await tool_service.register_tool(db, tool_create_obj)
-        #         tools_created.append(tool_created)
-        #     except Exception as e:
-        #         # Get tool name safely
-        #         tool_name = "unknown"
-        #         if hasattr(tool_data, 'name'):
-        #             tool_name = tool_data.name
-        #         elif isinstance(tool_data, dict):
-        #             tool_name = tool_data.get('name', 'unknown')
-
-        #         logger.warning(f"Failed to create tool {tool_name}: {e}")
-
 
         return {
             "success": True,
