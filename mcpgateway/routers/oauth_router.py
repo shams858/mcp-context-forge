@@ -30,32 +30,23 @@ async def initiate_oauth_flow(
     request: Request,
     db: Session = Depends(get_db)
 ) -> RedirectResponse:
-    """
-    Initiates the OAuth 2.0 Authorization Code flow for a specified gateway.
+    """Initiates the OAuth 2.0 Authorization Code flow for a specified gateway.
 
     This endpoint retrieves the OAuth configuration for the given gateway, validates that
     the gateway supports the Authorization Code flow, and redirects the user to the OAuth
     provider's authorization URL to begin the OAuth process.
 
-    Parameters
-    ----------
-    gateway_id : str
-        The unique identifier of the gateway to authorize.
-    request : fastapi.Request
-        The FastAPI request object.
-    db : sqlalchemy.orm.Session
-        The database session dependency.
+    Args:
+        gateway_id: The unique identifier of the gateway to authorize.
+        request: The FastAPI request object.
+        db: The database session dependency.
 
-    Returns
-    -------
-    fastapi.responses.RedirectResponse
+    Returns:
         A redirect response to the OAuth provider's authorization URL.
 
-    Raises
-    ------
-    fastapi.HTTPException
-        If the gateway is not found, not configured for OAuth, or not using the Authorization Code flow.
-        If an unexpected error occurs during the initiation process.
+    Raises:
+        HTTPException: If the gateway is not found, not configured for OAuth, or not using
+            the Authorization Code flow. If an unexpected error occurs during the initiation process.
     """
     try:
         # Get gateway configuration
@@ -116,7 +107,7 @@ async def oauth_callback(
     Args:
         code (str): The authorization code returned by the OAuth provider.
         state (str): The state parameter for CSRF protection, which encodes the gateway ID.
-        request (Request, optional): The incoming HTTP request object.
+        request (Request): The incoming HTTP request object.
         db (Session): The database session dependency.
 
     Returns:
@@ -344,6 +335,9 @@ async def get_oauth_status(
 
     Returns:
         OAuth status information
+
+    Raises:
+        HTTPException: If gateway not found or error retrieving status
     """
     try:
         # Get gateway configuration
@@ -397,7 +391,18 @@ async def get_oauth_status(
 
 @oauth_router.post("/fetch-tools/{gateway_id}")
 async def fetch_tools_after_oauth(gateway_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Fetch tools from MCP server after OAuth completion for Authorization Code flow."""
+    """Fetch tools from MCP server after OAuth completion for Authorization Code flow.
+
+    Args:
+        gateway_id: ID of the gateway to fetch tools for
+        db: Database session
+
+    Returns:
+        Dict containing success status and message with number of tools fetched
+
+    Raises:
+        HTTPException: If fetching tools fails
+    """
     try:
         from mcpgateway.services.gateway_service import GatewayService
 

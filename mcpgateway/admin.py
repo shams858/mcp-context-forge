@@ -39,7 +39,7 @@ from sqlalchemy.orm import Session
 
 # First-Party
 from mcpgateway.config import settings
-from mcpgateway.db import get_db, GlobalConfig, Gateway as DbGateway
+from mcpgateway.db import get_db, GlobalConfig
 from mcpgateway.models import LogLevel
 from mcpgateway.schemas import (
     GatewayCreate,

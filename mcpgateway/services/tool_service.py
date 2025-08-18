@@ -788,7 +788,7 @@ class ToolService:
 
                                 # Try to get a valid token for any user (for now, we'll use a placeholder)
                                 # In a real implementation, you might want to specify which user's tokens to use
-                                access_token = await token_storage.get_any_valid_token (gateway.id)
+                                access_token = await token_storage.get_any_valid_token(gateway.id)
 
                                 if access_token:
                                     headers = {"Authorization": f"Bearer {access_token}"}
