@@ -46,6 +46,7 @@ maintainers = [
 # Runtime dependencies
 # ----------------------------------------------------------------
 dependencies = [
+    "aiohttp>=3.12.15",
     "alembic>=1.16.4",
     "cryptography>=45.0.6",
     "fastapi>=0.116.1",
