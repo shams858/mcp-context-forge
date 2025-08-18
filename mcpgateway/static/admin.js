@@ -5121,19 +5121,26 @@ async function handleGatewayFormSubmit(e) {
                 client_id: formData.get("oauth_client_id"),
                 client_secret: formData.get("oauth_client_secret"),
                 token_url: formData.get("oauth_token_url"),
-                scopes: formData.get("oauth_scopes") ? formData.get("oauth_scopes").split(" ").filter(s => s.trim()) : []
+                scopes: formData.get("oauth_scopes")
+                    ? formData
+                          .get("oauth_scopes")
+                          .split(" ")
+                          .filter((s) => s.trim())
+                    : [],
             };
 
             // Add authorization code specific fields
             if (oauthConfig.grant_type === "authorization_code") {
-                oauthConfig.authorization_url = formData.get("oauth_authorization_url");
+                oauthConfig.authorization_url = formData.get(
+                    "oauth_authorization_url",
+                );
                 oauthConfig.redirect_uri = formData.get("oauth_redirect_uri");
 
                 // Add token management options
                 oauthConfig.token_management = {
                     store_tokens: formData.get("oauth_store_tokens") === "on",
                     auto_refresh: formData.get("oauth_auto_refresh") === "on",
-                    refresh_threshold_seconds: 300
+                    refresh_threshold_seconds: 300,
                 };
             }
 
@@ -6225,7 +6232,10 @@ function setupFormHandlers() {
         // Add OAuth grant type change handler
         const oauthGrantTypeField = safeGetElement("oauth-grant-type-gw");
         if (oauthGrantTypeField) {
-            oauthGrantTypeField.addEventListener("change", handleOAuthGrantTypeChange);
+            oauthGrantTypeField.addEventListener(
+                "change",
+                handleOAuthGrantTypeChange,
+            );
         }
     }
 
@@ -6318,24 +6328,40 @@ function handleAuthTypeChange() {
     const oauthFields = safeGetElement("auth-oauth-fields-gw");
 
     // Hide all auth sections first
-    if (basicFields) basicFields.style.display = "none";
-    if (bearerFields) bearerFields.style.display = "none";
-    if (headersFields) headersFields.style.display = "none";
-    if (oauthFields) oauthFields.style.display = "none";
+    if (basicFields) {
+        basicFields.style.display = "none";
+    }
+    if (bearerFields) {
+        bearerFields.style.display = "none";
+    }
+    if (headersFields) {
+        headersFields.style.display = "none";
+    }
+    if (oauthFields) {
+        oauthFields.style.display = "none";
+    }
 
     // Show the appropriate section
     switch (authType) {
         case "basic":
-            if (basicFields) basicFields.style.display = "block";
+            if (basicFields) {
+                basicFields.style.display = "block";
+            }
             break;
         case "bearer":
-            if (bearerFields) bearerFields.style.display = "block";
+            if (bearerFields) {
+                bearerFields.style.display = "block";
+            }
             break;
         case "authheaders":
-            if (headersFields) headersFields.style.display = "block";
+            if (headersFields) {
+                headersFields.style.display = "block";
+            }
             break;
         case "oauth":
-            if (oauthFields) oauthFields.style.display = "block";
+            if (oauthFields) {
+                oauthFields.style.display = "block";
+            }
             break;
         default:
             // No auth - keep everything hidden
@@ -6352,19 +6378,23 @@ function handleOAuthGrantTypeChange() {
             authCodeFields.style.display = "block";
 
             // Make authorization code specific fields required
-            const requiredFields = authCodeFields.querySelectorAll('input[type="url"]');
-            requiredFields.forEach(field => {
+            const requiredFields =
+                authCodeFields.querySelectorAll('input[type="url"]');
+            requiredFields.forEach((field) => {
                 field.required = true;
             });
 
             // Show additional validation for required fields
-            console.log("Authorization Code flow selected - additional fields are now required");
+            console.log(
+                "Authorization Code flow selected - additional fields are now required",
+            );
         } else {
             authCodeFields.style.display = "none";
 
             // Remove required validation for hidden fields
-            const requiredFields = authCodeFields.querySelectorAll('input[type="url"]');
-            requiredFields.forEach(field => {
+            const requiredFields =
+                authCodeFields.querySelectorAll('input[type="url"]');
+            requiredFields.forEach((field) => {
                 field.required = false;
             });
         }
@@ -7321,51 +7351,53 @@ window.loadAuthHeaders = loadAuthHeaders;
  */
 async function fetchToolsForGateway(gatewayId, gatewayName) {
     const button = document.getElementById(`fetch-tools-${gatewayId}`);
-    if (!button) return;
+    if (!button) {
+        return;
+    }
 
     // Disable button and show loading state
     button.disabled = true;
-    button.textContent = '⏳ Fetching...';
-    button.className = 'inline-block bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-sm mr-2';
+    button.textContent = "⏳ Fetching...";
+    button.className =
+        "inline-block bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-sm mr-2";
 
     try {
         const response = await fetch(`/oauth/fetch-tools/${gatewayId}`, {
-            method: 'POST'
+            method: "POST",
         });
 
         const result = await response.json();
 
         if (response.ok) {
             // Success
-            button.textContent = '✅ Tools Fetched';
-            button.className = 'inline-block bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm mr-2';
+            button.textContent = "✅ Tools Fetched";
+            button.className =
+                "inline-block bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm mr-2";
 
             // Show success message
-            showNotification(
+            showSuccessMessage(
                 `Successfully fetched ${result.tools_created} tools from ${gatewayName}`,
-                'success'
             );
 
             // Refresh the page to show the new tools
             setTimeout(() => {
                 window.location.reload();
             }, 2000);
-
         } else {
-            throw new Error(result.detail || 'Failed to fetch tools');
+            throw new Error(result.detail || "Failed to fetch tools");
         }
     } catch (error) {
-        console.error('Failed to fetch tools:', error);
+        console.error("Failed to fetch tools:", error);
 
         // Show error state
-        button.textContent = '❌ Retry';
-        button.className = 'inline-block bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm mr-2';
+        button.textContent = "❌ Retry";
+        button.className =
+            "inline-block bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm mr-2";
         button.disabled = false;
 
         // Show error message
-        showNotification(
+        showErrorMessage(
             `Failed to fetch tools from ${gatewayName}: ${error.message}`,
-            'error'
         );
     }
 }
