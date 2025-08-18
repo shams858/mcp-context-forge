@@ -29,7 +29,11 @@ class OAuthEncryption:
         self._fernet = None
 
     def _get_fernet(self) -> Fernet:
-        """Get or create Fernet instance for encryption."""
+        """Get or create Fernet instance for encryption.
+
+        Returns:
+            Fernet instance for encryption/decryption
+        """
         if self._fernet is None:
             # Derive a key from the encryption secret using PBKDF2
             kdf = PBKDF2HMAC(

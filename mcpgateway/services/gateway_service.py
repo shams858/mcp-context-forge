@@ -618,7 +618,7 @@ class GatewayService:
                 capabilities, tools, resources, prompts = await self.connect_to_streamablehttp_server(gateway.url, authentication)
 
                 # Filter out any None tools and create DbTool objects
-                tollsToAdd = []
+                tools_to_add = []
                 for tool in tools:
                     if tool is None:
                         logger.warning("Skipping None tool in tools list")
@@ -640,13 +640,13 @@ class GatewayService:
                             auth_value=gateway.auth_value,
                             gateway=gateway  # attach relationship to avoid NoneType during flush
                         )
-                        tollsToAdd.append(db_tool)
+                        tools_to_add.append(db_tool)
                     except Exception as e:
                         logger.warning(f"Failed to create DbTool for tool {getattr(tool, 'name', 'unknown')}: {e}")
                         continue
 
                     # Add to DB
-                    db.add_all(tollsToAdd)
+                    db.add_all(tools_to_add)
                     db.commit()
 
                 else:
@@ -1849,7 +1849,15 @@ class GatewayService:
             await queue.put(event)
 
     async def connect_to_sse_server(self, server_url: str, authentication: Optional[Dict[str, str]] = None):
-        """Connect to an MCP server running with SSE transport."""
+        """Connect to an MCP server running with SSE transport.
+
+        Args:
+            server_url: The URL of the SSE MCP server to connect to.
+            authentication: Optional dictionary containing authentication headers.
+
+        Returns:
+            Tuple containing (capabilities, tools, resources, prompts) from the MCP server.
+        """
         if authentication is None:
             authentication = {}
         # Use authentication directly instead
@@ -1935,7 +1943,15 @@ class GatewayService:
         raise GatewayConnectionError(f"Failed to initialize gateway at {server_url}")
 
     async def connect_to_streamablehttp_server(self, server_url: str, authentication: Optional[Dict[str, str]] = None):
-        """Connect to an MCP server running with Streamable HTTP transport."""
+        """Connect to an MCP server running with Streamable HTTP transport.
+
+        Args:
+            server_url: The URL of the Streamable HTTP MCP server to connect to.
+            authentication: Optional dictionary containing authentication headers.
+
+        Returns:
+            Tuple containing (capabilities, tools, resources, prompts) from the MCP server.
+        """
         if authentication is None:
             authentication = {}
         # Use authentication directly instead
