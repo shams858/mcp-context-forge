@@ -8,7 +8,6 @@ This module handles OAuth 2.0 authentication flows including:
 
 import logging
 from typing import Dict, Any, Optional
-from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
 import aiohttp
 import asyncio
@@ -152,7 +151,7 @@ class OAuthManager:
                             )
 
                         logger.info(
-                            f"Successfully obtained access token via client credentials"
+                            """Successfully obtained access token via client credentials"""
                         )
                         return token_response['access_token']
 
@@ -286,7 +285,7 @@ class OAuthManager:
                             )
 
                         logger.info(
-                            f"Successfully exchanged authorization code for access token"
+                            """Successfully exchanged authorization code for access token"""
                         )
                         return token_response['access_token']
 
@@ -317,10 +316,6 @@ class OAuthManager:
         Returns:
             Dict containing authorization_url and state
         """
-        client_id = credentials['client_id']
-        redirect_uri = credentials['redirect_uri']
-        authorization_url = credentials['authorization_url']
-        scopes = credentials.get('scopes', [])
 
         # Generate state parameter for CSRF protection
         state = self._generate_state(gateway_id)
@@ -552,7 +547,7 @@ class OAuthManager:
                             )
 
                         logger.info(
-                            f"Successfully exchanged authorization code for tokens"
+                            """Successfully exchanged authorization code for tokens"""
                         )
                         return token_response
 

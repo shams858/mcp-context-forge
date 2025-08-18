@@ -140,7 +140,7 @@ async def oauth_callback(
 
         if not gateway:
             return HTMLResponse(
-                content=f"""
+                content="""
                 <!DOCTYPE html>
                 <html>
                 <head><title>OAuth Authorization Failed</title></head>
@@ -156,7 +156,7 @@ async def oauth_callback(
 
         if not gateway.oauth_config:
             return HTMLResponse(
-                content=f"""
+                content="""
                 <!DOCTYPE html>
                 <html>
                 <head><title>OAuth Authorization Failed</title></head>
@@ -365,8 +365,6 @@ async def get_oauth_status(
         grant_type = oauth_config.get('grant_type')
 
         if grant_type == 'authorization_code':
-            # Get token information if available
-            token_storage = TokenStorageService(db)
             # For now, return basic info - in a real implementation you might want to
             # show authorized users, token status, etc.
             return {
@@ -405,10 +403,11 @@ async def fetch_tools_after_oauth(gateway_id: str, db: Session = Depends(get_db)
 
         gateway_service = GatewayService()
         result = await gateway_service.fetch_tools_after_oauth(db, gateway_id)
+        tools_count = len(result.get("tools", []))
 
         return {
             "success": True,
-            "message": f"Successfully fetched and created {len(result.get("tools", []))} tools"
+            "message": f"Successfully fetched and created {tools_count} tools"
         }
 
     except Exception as e:

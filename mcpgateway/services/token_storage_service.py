@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from mcpgateway.db import OAuthToken, Gateway
+from mcpgateway.db import OAuthToken
 from mcpgateway.utils.oauth_encryption import get_oauth_encryption
 from mcpgateway.services.oauth_manager import OAuthError
 

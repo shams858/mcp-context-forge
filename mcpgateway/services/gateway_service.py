@@ -1565,7 +1565,7 @@ class GatewayService:
                     # For Authorization Code flow, we can't initialize immediately
                     # because we need user consent. Just store the configuration
                     # and let the user complete the OAuth flow later.
-                    logger.info(f"OAuth Authorization Code flow configured for gateway. User must complete authorization before gateway can be used.")
+                    logger.info("""OAuth Authorization Code flow configured for gateway. User must complete authorization before gateway can be used.""")
                     # Don't try to get access token here - it will be obtained during tool invocation
                     authentication = {}
 
