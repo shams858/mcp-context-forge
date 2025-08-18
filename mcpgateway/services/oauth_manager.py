@@ -82,6 +82,9 @@ class OAuthManager:
 
         Returns:
             Access token string
+
+        Raises:
+            OAuthError: If token acquisition fails after all retries
         """
         client_id = credentials['client_id']
         client_secret = credentials['client_secret']
@@ -217,6 +220,9 @@ class OAuthManager:
 
         Returns:
             Access token string
+
+        Raises:
+            OAuthError: If token exchange fails
         """
         client_id = credentials['client_id']
         client_secret = credentials['client_secret']
@@ -352,6 +358,9 @@ class OAuthManager:
 
         Returns:
             Dict containing success status, user_id, and expiration info
+
+        Raises:
+            OAuthError: If state validation fails or token exchange fails
         """
         # Validate state parameter
         if self.token_storage and not await self._validate_authorization_state(gateway_id, state):
@@ -479,6 +488,9 @@ class OAuthManager:
 
         Returns:
             Token response dictionary
+
+        Raises:
+            OAuthError: If token exchange fails
         """
         client_id = credentials['client_id']
         client_secret = credentials['client_secret']
