@@ -60,10 +60,7 @@ class OAuthManager:
             # For authorization code flow in gateway initialization, we need to handle this differently
             # Since this is called during gateway setup, we'll try to use client credentials as fallback
             # or provide a more helpful error message
-            logger.warning(
-                "Authorization code flow requires user interaction. "
-                + "For gateway initialization, consider using 'client_credentials' grant type instead."
-            )
+            logger.warning("Authorization code flow requires user interaction. " + "For gateway initialization, consider using 'client_credentials' grant type instead.")
             # Try to use client credentials flow if possible (some OAuth providers support this)
             try:
                 return await self._client_credentials_flow(credentials)
