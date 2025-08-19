@@ -34,7 +34,7 @@ from mcpgateway.db import Prompt as DbPrompt
 from mcpgateway.db import PromptMetric, server_prompt_association
 from mcpgateway.models import Message, PromptResult, Role, TextContent
 from mcpgateway.observability import create_span
-from mcpgateway.plugins import GlobalContext, PluginManager, PluginViolationError, PromptPosthookPayload, PromptPrehookPayload
+from mcpgateway.plugins.framework import GlobalContext, PluginManager, PluginViolationError, PromptPosthookPayload, PromptPrehookPayload
 from mcpgateway.schemas import PromptCreate, PromptRead, PromptUpdate, TopPerformer
 from mcpgateway.services.logging_service import LoggingService
 from mcpgateway.utils.metrics_common import build_top_performers
@@ -240,12 +240,28 @@ class PromptService:
             "tags": db_prompt.tags or [],
         }
 
-    async def register_prompt(self, db: Session, prompt: PromptCreate) -> PromptRead:
+    async def register_prompt(
+        self,
+        db: Session,
+        prompt: PromptCreate,
+        created_by: Optional[str] = None,
+        created_from_ip: Optional[str] = None,
+        created_via: Optional[str] = None,
+        created_user_agent: Optional[str] = None,
+        import_batch_id: Optional[str] = None,
+        federation_source: Optional[str] = None,
+    ) -> PromptRead:
         """Register a new prompt template.
 
         Args:
             db: Database session
             prompt: Prompt creation schema
+            created_by: Username who created this prompt
+            created_from_ip: IP address of creator
+            created_via: Creation method (ui, api, import, federation)
+            created_user_agent: User agent of creation request
+            import_batch_id: UUID for bulk import operations
+            federation_source: Source gateway for federated prompts
 
         Returns:
             Created prompt information
@@ -298,6 +314,14 @@ class PromptService:
                 template=prompt.template,
                 argument_schema=argument_schema,
                 tags=prompt.tags,
+                # Metadata fields
+                created_by=created_by,
+                created_from_ip=created_from_ip,
+                created_via=created_via,
+                created_user_agent=created_user_agent,
+                import_batch_id=import_batch_id,
+                federation_source=federation_source,
+                version=1,
             )
 
             # Add to DB
@@ -476,7 +500,7 @@ class PromptService:
                     request_id = uuid.uuid4().hex
                 global_context = GlobalContext(request_id=request_id, user=user, server_id=server_id, tenant_id=tenant_id)
                 try:
-                    pre_result, context_table = await self._plugin_manager.prompt_pre_fetch(payload=PromptPrehookPayload(name, arguments), global_context=global_context, local_contexts=None)
+                    pre_result, context_table = await self._plugin_manager.prompt_pre_fetch(payload=PromptPrehookPayload(name=name, args=arguments), global_context=global_context, local_contexts=None)
 
                     if not pre_result.continue_processing:
                         # Plugin blocked the request
