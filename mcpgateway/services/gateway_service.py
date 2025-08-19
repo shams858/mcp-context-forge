@@ -76,10 +76,10 @@ from mcpgateway.db import SessionLocal
 from mcpgateway.db import Tool as DbTool
 from mcpgateway.observability import create_span
 from mcpgateway.schemas import GatewayCreate, GatewayRead, GatewayUpdate, PromptCreate, ResourceCreate, ToolCreate
-from mcpgateway.services.oauth_manager import OAuthManager
 
 # logging.getLogger("httpx").setLevel(logging.WARNING)  # Disables httpx logs for regular health checks
 from mcpgateway.services.logging_service import LoggingService
+from mcpgateway.services.oauth_manager import OAuthManager
 from mcpgateway.services.tool_service import ToolService
 from mcpgateway.utils.create_slug import slugify
 from mcpgateway.utils.retry_manager import ResilientHttpClient
@@ -175,7 +175,7 @@ class GatewayConnectionError(GatewayError):
     """
 
 
-class GatewayService:
+class GatewayService:  # pylint: disable=too-many-instance-attributes
     """Service for managing federated gateways.
 
     Handles:
@@ -231,10 +231,7 @@ class GatewayService:
         self._pending_responses = {}
         self.tool_service = ToolService()
         self._gateway_failure_counts: dict[str, int] = {}
-        self.oauth_manager = OAuthManager(
-            request_timeout=int(os.getenv("OAUTH_REQUEST_TIMEOUT", "30")),
-            max_retries=int(os.getenv("OAUTH_MAX_RETRIES", "3"))
-        )
+        self.oauth_manager = OAuthManager(request_timeout=int(os.getenv("OAUTH_REQUEST_TIMEOUT", "30")), max_retries=int(os.getenv("OAUTH_MAX_RETRIES", "3")))
 
         # For health checks, we determine the leader instance.
         self.redis_url = settings.redis_url if settings.cache_type == "redis" else None
@@ -453,9 +450,7 @@ class GatewayService:
                 auth_value = encode_auth(header_dict)  # Encode the dict for consistency
 
             oauth_config = getattr(gateway, "oauth_config", None)
-            capabilities, tools, resources, prompts = await self._initialize_gateway(
-                normalized_url, auth_value, gateway.transport, auth_type, oauth_config
-            )
+            capabilities, tools, resources, prompts = await self._initialize_gateway(normalized_url, auth_value, gateway.transport, auth_type, oauth_config)
 
             tools = [
                 DbTool(
@@ -574,9 +569,7 @@ class GatewayService:
         """
         try:
             # Get the gateway
-            gateway = db.execute(
-                select(DbGateway).where(DbGateway.id == gateway_id)
-            ).scalar_one_or_none()
+            gateway = db.execute(select(DbGateway).where(DbGateway.id == gateway_id)).scalar_one_or_none()
 
             if not gateway:
                 raise ValueError(f"Gateway {gateway_id} not found")
@@ -584,12 +577,14 @@ class GatewayService:
             if not gateway.oauth_config:
                 raise ValueError(f"Gateway {gateway_id} has no OAuth configuration")
 
-            grant_type = gateway.oauth_config.get('grant_type')
-            if grant_type != 'authorization_code':
+            grant_type = gateway.oauth_config.get("grant_type")
+            if grant_type != "authorization_code":
                 raise ValueError(f"Gateway {gateway_id} is not using Authorization Code flow")
 
             # Get OAuth tokens for this gateway
-            from mcpgateway.services.token_storage_service import TokenStorageService
+            # First-Party
+            from mcpgateway.services.token_storage_service import TokenStorageService  # pylint: disable=import-outside-toplevel
+
             token_storage = TokenStorageService(db)
 
             # Try to get a valid token for any user (for now, we'll use a placeholder)
@@ -597,10 +592,7 @@ class GatewayService:
             access_token = await token_storage.get_any_valid_token(gateway.id)
 
             if not access_token:
-                raise GatewayConnectionError(
-                    f"No valid OAuth tokens found for gateway {gateway.name}. "
-                    "Please complete the OAuth authorization flow first."
-                )
+                raise GatewayConnectionError(f"No valid OAuth tokens found for gateway {gateway.name}. " "Please complete the OAuth authorization flow first.")
 
             # Now connect to MCP server with the access token
             authentication = {"Authorization": f"Bearer {access_token}"}
@@ -608,13 +600,8 @@ class GatewayService:
             # Use the existing connection logic
             if gateway.transport.upper() == "SSE":
                 capabilities, tools, resources, prompts = await self.connect_to_sse_server(gateway.url, authentication)
-                return {
-                    "capabilities": capabilities,
-                    "tools": tools,
-                    "resources": resources,
-                    "prompts": prompts
-                }
-            elif gateway.transport.upper() == "STREAMABLEHTTP":
+                return {"capabilities": capabilities, "tools": tools, "resources": resources, "prompts": prompts}
+            if gateway.transport.upper() == "STREAMABLEHTTP":
                 capabilities, tools, resources, prompts = await self.connect_to_streamablehttp_server(gateway.url, authentication)
 
                 # Filter out any None tools and create DbTool objects
@@ -628,7 +615,7 @@ class GatewayService:
                         db_tool = DbTool(
                             original_name=tool.name,
                             original_name_slug=slugify(tool.name),
-                            url=gateway.url.rstrip('/'),
+                            url=gateway.url.rstrip("/"),
                             description=tool.description,
                             integration_type="MCP",  # Gateway-discovered tools are MCP type
                             request_type=tool.request_type,
@@ -638,28 +625,22 @@ class GatewayService:
                             jsonpath_filter=tool.jsonpath_filter,
                             auth_type=gateway.auth_type,
                             auth_value=gateway.auth_value,
-                            gateway=gateway  # attach relationship to avoid NoneType during flush
+                            gateway=gateway,  # attach relationship to avoid NoneType during flush
                         )
                         tools_to_add.append(db_tool)
                     except Exception as e:
                         logger.warning(f"Failed to create DbTool for tool {getattr(tool, 'name', 'unknown')}: {e}")
                         continue
 
-                    # Add to DB
+                # Add to DB
+                if tools_to_add:
                     db.add_all(tools_to_add)
                     db.commit()
-
                 else:
                     logger.warning("No valid tools to add to database")
 
-                return {
-                    "capabilities": capabilities,
-                    "tools": tools,
-                    "resources": resources,
-                    "prompts": prompts
-                }
-            else:
-                raise ValueError(f"Unsupported transport type: {gateway.transport}")
+                return {"capabilities": capabilities, "tools": tools, "resources": resources, "prompts": prompts}
+            raise ValueError(f"Unsupported transport type: {gateway.transport}")
 
         except Exception as e:
             logger.error(f"Failed to fetch tools after OAuth for gateway {gateway_id}: {e}")
@@ -801,10 +782,7 @@ class GatewayService:
                 # Try to reinitialize connection if URL changed
                 if gateway_update.url is not None:
                     try:
-                        capabilities, tools, resources, prompts = await self._initialize_gateway(
-                            gateway.url, gateway.auth_value, gateway.transport,
-                            gateway.auth_type, gateway.oauth_config
-                        )
+                        capabilities, tools, resources, prompts = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport, gateway.auth_type, gateway.oauth_config)
                         new_tool_names = [tool.name for tool in tools]
                         new_resource_uris = [resource.uri for resource in resources]
                         new_prompt_names = [prompt.name for prompt in prompts]
@@ -991,10 +969,7 @@ class GatewayService:
                     self._active_gateways.add(gateway.url)
                     # Try to initialize if activating
                     try:
-                        capabilities, tools, resources, prompts = await self._initialize_gateway(
-                            gateway.url, gateway.auth_value, gateway.transport,
-                            gateway.auth_type, gateway.oauth_config
-                        )
+                        capabilities, tools, resources, prompts = await self._initialize_gateway(gateway.url, gateway.auth_value, gateway.transport, gateway.auth_type, gateway.oauth_config)
                         new_tool_names = [tool.name for tool in tools]
                         new_resource_uris = [resource.uri for resource in resources]
                         new_prompt_names = [prompt.name for prompt in prompts]
@@ -1507,8 +1482,7 @@ class GatewayService:
             self._event_subscribers.remove(queue)
 
     async def _initialize_gateway(
-        self, url: str, authentication: Optional[Dict[str, str]] = None, transport: str = "SSE",
-        auth_type: Optional[str] = None, oauth_config: Optional[Dict[str, Any]] = None
+        self, url: str, authentication: Optional[Dict[str, str]] = None, transport: str = "SSE", auth_type: Optional[str] = None, oauth_config: Optional[Dict[str, Any]] = None
     ) -> tuple[Dict[str, Any], List[ToolCreate], List[ResourceCreate], List[PromptCreate]]:
         """Initialize connection to a gateway and retrieve its capabilities.
 
@@ -1559,9 +1533,9 @@ class GatewayService:
 
             # Handle OAuth authentication
             if auth_type == "oauth" and oauth_config:
-                grant_type = oauth_config.get('grant_type', 'client_credentials')
+                grant_type = oauth_config.get("grant_type", "client_credentials")
 
-                if grant_type == 'authorization_code':
+                if grant_type == "authorization_code":
                     # For Authorization Code flow, we can't initialize immediately
                     # because we need user consent. Just store the configuration
                     # and let the user complete the OAuth flow later.
@@ -1572,15 +1546,14 @@ class GatewayService:
                     # Skip MCP server connection for Authorization Code flow
                     # Tools will be fetched after OAuth completion
                     return {}, [], [], []
-                else:
-                    # For Client Credentials flow, we can get the token immediately
-                    try:
-                        print(f"oauth_config: {oauth_config}")
-                        access_token = await self.oauth_manager.get_access_token(oauth_config)
-                        authentication = {"Authorization": f"Bearer {access_token}"}
-                    except Exception as e:
-                        logger.error(f"Failed to obtain OAuth access token: {e}")
-                        raise GatewayConnectionError(f"OAuth authentication failed: {str(e)}")
+                # For Client Credentials flow, we can get the token immediately
+                try:
+                    print(f"oauth_config: {oauth_config}")
+                    access_token = await self.oauth_manager.get_access_token(oauth_config)
+                    authentication = {"Authorization": f"Bearer {access_token}"}
+                except Exception as e:
+                    logger.error(f"Failed to obtain OAuth access token: {e}")
+                    raise GatewayConnectionError(f"OAuth authentication failed: {str(e)}")
 
             capabilities = {}
             tools = []

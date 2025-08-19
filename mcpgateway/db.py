@@ -1134,11 +1134,7 @@ class Gateway(Base):
     auth_value: Mapped[Optional[Dict[str, str]]] = mapped_column(JSON)
 
     # OAuth configuration
-    oauth_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="OAuth 2.0 configuration including grant_type, client_id, encrypted client_secret, URLs, and scopes"
-    )
+    oauth_config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, comment="OAuth 2.0 configuration including grant_type, client_id, encrypted client_secret, URLs, and scopes")
 
     # Relationship with OAuth tokens
     oauth_tokens: Mapped[List["OAuthToken"]] = relationship("OAuthToken", back_populates="gateway", cascade="all, delete-orphan")

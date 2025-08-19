@@ -10,6 +10,7 @@ Create Date: 2024-12-20 10:00:00.000000
 # Standard
 from typing import Sequence, Union
 
+# Third-Party
 from alembic import op
 import sqlalchemy as sa
 
@@ -32,14 +33,7 @@ def upgrade() -> None:
 
     # Add oauth_config column
     with op.batch_alter_table("gateways", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column(
-                "oauth_config",
-                sa.JSON(),
-                nullable=True,
-                comment="OAuth 2.0 configuration including grant_type, client_id, encrypted client_secret, URLs, and scopes"
-            )
-        )
+        batch_op.add_column(sa.Column("oauth_config", sa.JSON(), nullable=True, comment="OAuth 2.0 configuration including grant_type, client_id, encrypted client_secret, URLs, and scopes"))
 
     print("Successfully added oauth_config column to gateways table.")
 

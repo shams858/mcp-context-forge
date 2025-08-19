@@ -7,16 +7,19 @@ This module handles OAuth 2.0 Authorization Code flow endpoints including:
 - Token management
 """
 
+# Standard
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Request, HTTPException, Query
-from fastapi.responses import RedirectResponse, HTMLResponse
-from sqlalchemy.orm import Session
+# Third-Party
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from mcpgateway.db import get_db, Gateway
-from mcpgateway.services.oauth_manager import OAuthManager, OAuthError
+# First-Party
+from mcpgateway.db import Gateway, get_db
+from mcpgateway.services.oauth_manager import OAuthError, OAuthManager
 from mcpgateway.services.token_storage_service import TokenStorageService
 
 logger = logging.getLogger(__name__)
@@ -25,11 +28,7 @@ oauth_router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 
 @oauth_router.get("/authorize/{gateway_id}")
-async def initiate_oauth_flow(
-    gateway_id: str,
-    request: Request,
-    db: Session = Depends(get_db)
-) -> RedirectResponse:
+async def initiate_oauth_flow(gateway_id: str, request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     """Initiates the OAuth 2.0 Authorization Code flow for a specified gateway.
 
     This endpoint retrieves the OAuth configuration for the given gateway, validates that
@@ -50,44 +49,31 @@ async def initiate_oauth_flow(
     """
     try:
         # Get gateway configuration
-        gateway = db.execute(
-            select(Gateway).where(Gateway.id == gateway_id)
-        ).scalar_one_or_none()
+        gateway = db.execute(select(Gateway).where(Gateway.id == gateway_id)).scalar_one_or_none()
 
         if not gateway:
             raise HTTPException(status_code=404, detail="Gateway not found")
 
         if not gateway.oauth_config:
-            raise HTTPException(
-                status_code=400,
-                detail="Gateway is not configured for OAuth"
-            )
+            raise HTTPException(status_code=400, detail="Gateway is not configured for OAuth")
 
-        if gateway.oauth_config.get('grant_type') != 'authorization_code':
-            raise HTTPException(
-                status_code=400,
-                detail="Gateway is not configured for Authorization Code flow"
-            )
+        if gateway.oauth_config.get("grant_type") != "authorization_code":
+            raise HTTPException(status_code=400, detail="Gateway is not configured for Authorization Code flow")
 
         # Initiate OAuth flow
         oauth_manager = OAuthManager(token_storage=TokenStorageService(db))
-        auth_data = await oauth_manager.initiate_authorization_code_flow(
-            gateway_id, gateway.oauth_config
-        )
+        auth_data = await oauth_manager.initiate_authorization_code_flow(gateway_id, gateway.oauth_config)
 
         logger.info(f"Initiated OAuth flow for gateway {gateway_id}")
 
         # Redirect user to OAuth provider
-        return RedirectResponse(url=auth_data['authorization_url'])
+        return RedirectResponse(url=auth_data["authorization_url"])
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to initiate OAuth flow: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to initiate OAuth flow: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to initiate OAuth flow: {str(e)}")
 
 
 @oauth_router.get("/callback")
@@ -96,7 +82,7 @@ async def oauth_callback(
     state: str = Query(..., description="State parameter for CSRF protection"),
     # Remove the gateway_id parameter requirement
     request: Request = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Handle the OAuth callback and complete the authorization process.
 
@@ -116,18 +102,13 @@ async def oauth_callback(
 
     try:
         # Extract gateway_id from state parameter
-        if '_' not in state:
-            return HTMLResponse(
-                content="<h1>❌ Invalid state parameter</h1>",
-                status_code=400
-            )
+        if "_" not in state:
+            return HTMLResponse(content="<h1>❌ Invalid state parameter</h1>", status_code=400)
 
-        gateway_id = state.split('_')[0]
+        gateway_id = state.split("_")[0]
 
         # Get gateway configuration
-        gateway = db.execute(
-            select(Gateway).where(Gateway.id == gateway_id)
-        ).scalar_one_or_none()
+        gateway = db.execute(select(Gateway).where(Gateway.id == gateway_id)).scalar_one_or_none()
 
         if not gateway:
             return HTMLResponse(
@@ -142,7 +123,7 @@ async def oauth_callback(
                 </body>
                 </html>
                 """,
-                status_code=404
+                status_code=404,
             )
 
         if not gateway.oauth_config:
@@ -158,20 +139,19 @@ async def oauth_callback(
                 </body>
                 </html>
                 """,
-                status_code=400
+                status_code=400,
             )
 
         # Complete OAuth flow
         oauth_manager = OAuthManager(token_storage=TokenStorageService(db))
 
-        result = await oauth_manager.complete_authorization_code_flow(
-            gateway_id, code, state, gateway.oauth_config
-        )
+        result = await oauth_manager.complete_authorization_code_flow(gateway_id, code, state, gateway.oauth_config)
 
         logger.info(f"Completed OAuth flow for gateway {gateway_id}, user {result.get('user_id')}")
 
         # Return success page with option to return to admin
-        return HTMLResponse(content=f"""
+        return HTMLResponse(
+            content=f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -257,11 +237,13 @@ async def oauth_callback(
             </script>
         </body>
         </html>
-        """)
+        """
+        )
 
     except OAuthError as e:
         logger.error(f"OAuth callback failed: {str(e)}")
-        return HTMLResponse(content=f"""
+        return HTMLResponse(
+            content=f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -288,11 +270,14 @@ async def oauth_callback(
             <a href="/admin#gateways" class="button">Return to Admin Panel</a>
         </body>
         </html>
-        """, status_code=400)
+        """,
+            status_code=400,
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error in OAuth callback: {str(e)}")
-        return HTMLResponse(content=f"""
+        return HTMLResponse(
+            content=f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -319,14 +304,13 @@ async def oauth_callback(
             <a href="/admin#gateways" class="button">Return to Admin Panel</a>
         </body>
         </html>
-        """, status_code=500)
+        """,
+            status_code=500,
+        )
 
 
 @oauth_router.get("/status/{gateway_id}")
-async def get_oauth_status(
-    gateway_id: str,
-    db: Session = Depends(get_db)
-) -> dict:
+async def get_oauth_status(gateway_id: str, db: Session = Depends(get_db)) -> dict:
     """Get OAuth status for a gateway.
 
     Args:
@@ -341,52 +325,44 @@ async def get_oauth_status(
     """
     try:
         # Get gateway configuration
-        gateway = db.execute(
-            select(Gateway).where(Gateway.id == gateway_id)
-        ).scalar_one_or_none()
+        gateway = db.execute(select(Gateway).where(Gateway.id == gateway_id)).scalar_one_or_none()
 
         if not gateway:
             raise HTTPException(status_code=404, detail="Gateway not found")
 
         if not gateway.oauth_config:
-            return {
-                "oauth_enabled": False,
-                "message": "Gateway is not configured for OAuth"
-            }
+            return {"oauth_enabled": False, "message": "Gateway is not configured for OAuth"}
 
         # Get OAuth configuration info
         oauth_config = gateway.oauth_config
-        grant_type = oauth_config.get('grant_type')
+        grant_type = oauth_config.get("grant_type")
 
-        if grant_type == 'authorization_code':
+        if grant_type == "authorization_code":
             # For now, return basic info - in a real implementation you might want to
             # show authorized users, token status, etc.
             return {
                 "oauth_enabled": True,
                 "grant_type": grant_type,
-                "client_id": oauth_config.get('client_id'),
-                "scopes": oauth_config.get('scopes', []),
-                "authorization_url": oauth_config.get('authorization_url'),
-                "redirect_uri": oauth_config.get('redirect_uri'),
-                "message": "Gateway configured for Authorization Code flow"
+                "client_id": oauth_config.get("client_id"),
+                "scopes": oauth_config.get("scopes", []),
+                "authorization_url": oauth_config.get("authorization_url"),
+                "redirect_uri": oauth_config.get("redirect_uri"),
+                "message": "Gateway configured for Authorization Code flow",
             }
         else:
             return {
                 "oauth_enabled": True,
                 "grant_type": grant_type,
-                "client_id": oauth_config.get('client_id'),
-                "scopes": oauth_config.get('scopes', []),
-                "message": f"Gateway configured for {grant_type} flow"
+                "client_id": oauth_config.get("client_id"),
+                "scopes": oauth_config.get("scopes", []),
+                "message": f"Gateway configured for {grant_type} flow",
             }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get OAuth status: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get OAuth status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get OAuth status: {str(e)}")
 
 
 @oauth_router.post("/fetch-tools/{gateway_id}")
@@ -404,16 +380,14 @@ async def fetch_tools_after_oauth(gateway_id: str, db: Session = Depends(get_db)
         HTTPException: If fetching tools fails
     """
     try:
+        # First-Party
         from mcpgateway.services.gateway_service import GatewayService
 
         gateway_service = GatewayService()
         result = await gateway_service.fetch_tools_after_oauth(db, gateway_id)
         tools_count = len(result.get("tools", []))
 
-        return {
-            "success": True,
-            "message": f"Successfully fetched and created {tools_count} tools"
-        }
+        return {"success": True, "message": f"Successfully fetched and created {tools_count} tools"}
 
     except Exception as e:
         logger.error(f"Failed to fetch tools after OAuth for gateway {gateway_id}: {e}")

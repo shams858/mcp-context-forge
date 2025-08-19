@@ -5,10 +5,12 @@ This module provides encryption and decryption functions for OAuth client secret
 using the AUTH_ENCRYPTION_SECRET from configuration.
 """
 
+# Standard
 import base64
 import logging
 from typing import Optional
 
+# Third-Party
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -39,7 +41,7 @@ class OAuthEncryption:
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
-                salt=b'mcp_gateway_oauth',  # Fixed salt for consistency
+                salt=b"mcp_gateway_oauth",  # Fixed salt for consistency
                 iterations=100000,
             )
             key = base64.urlsafe_b64encode(kdf.derive(self.encryption_secret))

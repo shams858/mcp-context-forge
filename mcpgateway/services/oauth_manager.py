@@ -6,11 +6,19 @@ This module handles OAuth 2.0 authentication flows including:
 - Authorization Code (User Delegation)
 """
 
-import logging
-from typing import Dict, Any, Optional
-from requests_oauthlib import OAuth2Session
-import aiohttp
+# Standard
 import asyncio
+import logging
+import secrets
+from typing import Any, Dict, Optional
+
+# Third-Party
+import aiohttp
+from requests_oauthlib import OAuth2Session
+
+# First-Party
+from mcpgateway.config import get_settings
+from mcpgateway.utils.oauth_encryption import get_oauth_encryption
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +38,7 @@ class OAuthManager:
         self.max_retries = max_retries
         self.token_storage = token_storage
 
-    async def get_access_token(
-        self,
-        credentials: Dict[str, Any]
-    ) -> str:
+    async def get_access_token(self, credentials: Dict[str, Any]) -> str:
         """Get access token based on grant type.
 
         Args:
@@ -46,18 +51,18 @@ class OAuthManager:
             ValueError: If grant type is unsupported
             OAuthError: If token acquisition fails
         """
-        grant_type = credentials.get('grant_type')
+        grant_type = credentials.get("grant_type")
         logger.debug(f"Getting access token for grant type: {grant_type}")
 
-        if grant_type == 'client_credentials':
+        if grant_type == "client_credentials":
             return await self._client_credentials_flow(credentials)
-        elif grant_type == 'authorization_code':
+        if grant_type == "authorization_code":
             # For authorization code flow in gateway initialization, we need to handle this differently
             # Since this is called during gateway setup, we'll try to use client credentials as fallback
             # or provide a more helpful error message
             logger.warning(
                 "Authorization code flow requires user interaction. "
-                "For gateway initialization, consider using 'client_credentials' grant type instead."
+                + "For gateway initialization, consider using 'client_credentials' grant type instead."
             )
             # Try to use client credentials flow if possible (some OAuth providers support this)
             try:
@@ -71,10 +76,7 @@ class OAuthManager:
         else:
             raise ValueError(f"Unsupported grant type: {grant_type}")
 
-    async def _client_credentials_flow(
-        self,
-        credentials: Dict[str, Any]
-    ) -> str:
+    async def _client_credentials_flow(self, credentials: Dict[str, Any]) -> str:
         """Machine-to-machine authentication using client credentials.
 
         Args:
@@ -86,16 +88,14 @@ class OAuthManager:
         Raises:
             OAuthError: If token acquisition fails after all retries
         """
-        client_id = credentials['client_id']
-        client_secret = credentials['client_secret']
-        token_url = credentials['token_url']
-        scopes = credentials.get('scopes', [])
+        client_id = credentials["client_id"]
+        client_secret = credentials["client_secret"]
+        token_url = credentials["token_url"]
+        scopes = credentials.get("scopes", [])
 
         # Decrypt client secret if it's encrypted
         if len(client_secret) > 50:  # Simple heuristic: encrypted secrets are longer
             try:
-                from mcpgateway.utils.oauth_encryption import get_oauth_encryption
-                from mcpgateway.config import get_settings
                 settings = get_settings()
                 encryption = get_oauth_encryption(settings.auth_encryption_secret)
                 decrypted_secret = encryption.decrypt_secret(client_secret)
@@ -109,34 +109,30 @@ class OAuthManager:
 
         # Prepare token request data
         token_data = {
-            'grant_type': 'client_credentials',
-            'client_id': client_id,
-            'client_secret': client_secret,
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
 
         if scopes:
-            token_data['scope'] = ' '.join(scopes) if isinstance(scopes, list) else scopes
+            token_data["scope"] = " ".join(scopes) if isinstance(scopes, list) else scopes
 
         # Fetch token with retries
         for attempt in range(self.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        token_url,
-                        data=token_data,
-                        timeout=aiohttp.ClientTimeout(total=self.request_timeout)
-                    ) as response:
+                    async with session.post(token_url, data=token_data, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                         response.raise_for_status()
 
                         # GitHub returns form-encoded responses, not JSON
-                        content_type = response.headers.get('content-type', '')
-                        if 'application/x-www-form-urlencoded' in content_type:
+                        content_type = response.headers.get("content-type", "")
+                        if "application/x-www-form-urlencoded" in content_type:
                             # Parse form-encoded response
                             text_response = await response.text()
                             token_response = {}
-                            for pair in text_response.split('&'):
-                                if '=' in pair:
-                                    key, value = pair.split('=', 1)
+                            for pair in text_response.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
                                     token_response[key] = value
                         else:
                             # Try JSON response
@@ -146,35 +142,24 @@ class OAuthManager:
                                 logger.warning(f"Failed to parse JSON response: {e}")
                                 # Fallback to text parsing
                                 text_response = await response.text()
-                                token_response = {'raw_response': text_response}
+                                token_response = {"raw_response": text_response}
 
-                        if 'access_token' not in token_response:
-                            raise OAuthError(
-                                f"No access_token in response: {token_response}"
-                            )
+                        if "access_token" not in token_response:
+                            raise OAuthError(f"No access_token in response: {token_response}")
 
-                        logger.info(
-                            """Successfully obtained access token via client credentials"""
-                        )
-                        return token_response['access_token']
+                        logger.info("""Successfully obtained access token via client credentials""")
+                        return token_response["access_token"]
 
             except aiohttp.ClientError as e:
-                logger.warning(
-                    f"Token request attempt {attempt + 1} failed: {str(e)}"
-                )
+                logger.warning(f"Token request attempt {attempt + 1} failed: {str(e)}")
                 if attempt == self.max_retries - 1:
-                    raise OAuthError(
-                        f"Failed to obtain access token after {self.max_retries} attempts: {str(e)}"
-                    )
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    raise OAuthError(f"Failed to obtain access token after {self.max_retries} attempts: {str(e)}")
+                await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # This should never be reached due to the exception above, but needed for type safety
         raise OAuthError("Failed to obtain access token after all retry attempts")
 
-    async def get_authorization_url(
-        self,
-        credentials: Dict[str, Any]
-    ) -> Dict[str, str]:
+    async def get_authorization_url(self, credentials: Dict[str, Any]) -> Dict[str, str]:
         """Get authorization URL for user delegation flow.
 
         Args:
@@ -183,34 +168,22 @@ class OAuthManager:
         Returns:
             Dict containing authorization_url and state
         """
-        client_id = credentials['client_id']
-        redirect_uri = credentials['redirect_uri']
-        authorization_url = credentials['authorization_url']
-        scopes = credentials.get('scopes', [])
+        client_id = credentials["client_id"]
+        redirect_uri = credentials["redirect_uri"]
+        authorization_url = credentials["authorization_url"]
+        scopes = credentials.get("scopes", [])
 
         # Create OAuth2 session
-        oauth = OAuth2Session(
-            client_id,
-            redirect_uri=redirect_uri,
-            scope=scopes
-        )
+        oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scopes)
 
         # Generate authorization URL with state for CSRF protection
         auth_url, state = oauth.authorization_url(authorization_url)
 
         logger.info(f"Generated authorization URL for client {client_id}")
 
-        return {
-            'authorization_url': auth_url,
-            'state': state
-        }
+        return {"authorization_url": auth_url, "state": state}
 
-    async def exchange_code_for_token(
-        self,
-        credentials: Dict[str, Any],
-        code: str,
-        state: str
-    ) -> str:
+    async def exchange_code_for_token(self, credentials: Dict[str, Any], code: str, state: str) -> str:  # pylint: disable=unused-argument
         """Exchange authorization code for access token.
 
         Args:
@@ -224,16 +197,14 @@ class OAuthManager:
         Raises:
             OAuthError: If token exchange fails
         """
-        client_id = credentials['client_id']
-        client_secret = credentials['client_secret']
-        token_url = credentials['token_url']
-        redirect_uri = credentials['redirect_uri']
+        client_id = credentials["client_id"]
+        client_secret = credentials["client_secret"]
+        token_url = credentials["token_url"]
+        redirect_uri = credentials["redirect_uri"]
 
         # Decrypt client secret if it's encrypted
         if len(client_secret) > 50:  # Simple heuristic: encrypted secrets are longer
             try:
-                from mcpgateway.utils.oauth_encryption import get_oauth_encryption
-                from mcpgateway.config import get_settings
                 settings = get_settings()
                 encryption = get_oauth_encryption(settings.auth_encryption_secret)
                 decrypted_secret = encryption.decrypt_secret(client_secret)
@@ -247,33 +218,29 @@ class OAuthManager:
 
         # Prepare token exchange data
         token_data = {
-            'grant_type': 'authorization_code',
-            'code': code,
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'client_secret': client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
 
         # Exchange code for token with retries
         for attempt in range(self.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        token_url,
-                        data=token_data,
-                        timeout=aiohttp.ClientTimeout(total=self.request_timeout)
-                    ) as response:
+                    async with session.post(token_url, data=token_data, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                         response.raise_for_status()
 
                         # GitHub returns form-encoded responses, not JSON
-                        content_type = response.headers.get('content-type', '')
-                        if 'application/x-www-form-urlencoded' in content_type:
+                        content_type = response.headers.get("content-type", "")
+                        if "application/x-www-form-urlencoded" in content_type:
                             # Parse form-encoded response
                             text_response = await response.text()
                             token_response = {}
-                            for pair in text_response.split('&'):
-                                if '=' in pair:
-                                    key, value = pair.split('=', 1)
+                            for pair in text_response.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
                                     token_response[key] = value
                         else:
                             # Try JSON response
@@ -283,36 +250,24 @@ class OAuthManager:
                                 logger.warning(f"Failed to parse JSON response: {e}")
                                 # Fallback to text parsing
                                 text_response = await response.text()
-                                token_response = {'raw_response': text_response}
+                                token_response = {"raw_response": text_response}
 
-                        if 'access_token' not in token_response:
-                            raise OAuthError(
-                                f"No access_token in response: {token_response}"
-                            )
+                        if "access_token" not in token_response:
+                            raise OAuthError(f"No access_token in response: {token_response}")
 
-                        logger.info(
-                            """Successfully exchanged authorization code for access token"""
-                        )
-                        return token_response['access_token']
+                        logger.info("""Successfully exchanged authorization code for access token""")
+                        return token_response["access_token"]
 
             except aiohttp.ClientError as e:
-                logger.warning(
-                    f"Token exchange attempt {attempt + 1} failed: {str(e)}"
-                )
+                logger.warning(f"Token exchange attempt {attempt + 1} failed: {str(e)}")
                 if attempt == self.max_retries - 1:
-                    raise OAuthError(
-                        f"Failed to exchange code for token after {self.max_retries} attempts: {str(e)}"
-                    )
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    raise OAuthError(f"Failed to exchange code for token after {self.max_retries} attempts: {str(e)}")
+                await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # This should never be reached due to the exception above, but needed for type safety
         raise OAuthError("Failed to exchange code for token after all retry attempts")
 
-    async def initiate_authorization_code_flow(
-        self,
-        gateway_id: str,
-        credentials: Dict[str, Any]
-    ) -> Dict[str, str]:
+    async def initiate_authorization_code_flow(self, gateway_id: str, credentials: Dict[str, Any]) -> Dict[str, str]:
         """Initiate Authorization Code flow and return authorization URL.
 
         Args:
@@ -335,19 +290,9 @@ class OAuthManager:
 
         logger.info(f"Generated authorization URL for gateway {gateway_id}")
 
-        return {
-            'authorization_url': auth_url,
-            'state': state,
-            'gateway_id': gateway_id
-        }
+        return {"authorization_url": auth_url, "state": state, "gateway_id": gateway_id}
 
-    async def complete_authorization_code_flow(
-        self,
-        gateway_id: str,
-        code: str,
-        state: str,
-        credentials: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def complete_authorization_code_flow(self, gateway_id: str, code: str, state: str, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Complete Authorization Code flow and store tokens.
 
         Args:
@@ -377,29 +322,16 @@ class OAuthManager:
             token_record = await self.token_storage.store_tokens(
                 gateway_id=gateway_id,
                 user_id=user_id,
-                access_token=token_response['access_token'],
-                refresh_token=token_response.get('refresh_token'),
-                expires_in=token_response.get('expires_in', 3600),
-                scopes=token_response.get('scope', '').split()
+                access_token=token_response["access_token"],
+                refresh_token=token_response.get("refresh_token"),
+                expires_in=token_response.get("expires_in", 3600),
+                scopes=token_response.get("scope", "").split(),
             )
 
-            return {
-                'success': True,
-                'user_id': user_id,
-                'expires_at': token_record.expires_at.isoformat() if token_record.expires_at else None
-            }
-        else:
-            return {
-                'success': True,
-                'user_id': user_id,
-                'expires_at': None
-            }
+            return {"success": True, "user_id": user_id, "expires_at": token_record.expires_at.isoformat() if token_record.expires_at else None}
+        return {"success": True, "user_id": user_id, "expires_at": None}
 
-    async def get_access_token_for_user(
-        self,
-        gateway_id: str,
-        user_id: str
-    ) -> Optional[str]:
+    async def get_access_token_for_user(self, gateway_id: str, user_id: str) -> Optional[str]:
         """Get valid access token for a specific user.
 
         Args:
@@ -422,10 +354,9 @@ class OAuthManager:
         Returns:
             Unique state string
         """
-        import secrets
         return f"{gateway_id}_{secrets.token_urlsafe(32)}"
 
-    async def _store_authorization_state(self, gateway_id: str, state: str) -> None:
+    async def _store_authorization_state(self, gateway_id: str, state: str) -> None:  # pylint: disable=unused-argument
         """Store authorization state for validation.
 
         Args:
@@ -437,7 +368,7 @@ class OAuthManager:
         # with an expiration time for security
         logger.debug(f"Stored authorization state for gateway {gateway_id}")
 
-    async def _validate_authorization_state(self, gateway_id: str, state: str) -> bool:
+    async def _validate_authorization_state(self, gateway_id: str, state: str) -> bool:  # pylint: disable=unused-argument
         """Validate authorization state parameter.
 
         Args:
@@ -462,17 +393,13 @@ class OAuthManager:
         Returns:
             Tuple of (authorization_url, state)
         """
-        client_id = credentials['client_id']
-        redirect_uri = credentials['redirect_uri']
-        authorization_url = credentials['authorization_url']
-        scopes = credentials.get('scopes', [])
+        client_id = credentials["client_id"]
+        redirect_uri = credentials["redirect_uri"]
+        authorization_url = credentials["authorization_url"]
+        scopes = credentials.get("scopes", [])
 
         # Create OAuth2 session
-        oauth = OAuth2Session(
-            client_id,
-            redirect_uri=redirect_uri,
-            scope=scopes
-        )
+        oauth = OAuth2Session(client_id, redirect_uri=redirect_uri, scope=scopes)
 
         # Generate authorization URL with state for CSRF protection
         auth_url, state = oauth.authorization_url(authorization_url, state=state)
@@ -492,16 +419,14 @@ class OAuthManager:
         Raises:
             OAuthError: If token exchange fails
         """
-        client_id = credentials['client_id']
-        client_secret = credentials['client_secret']
-        token_url = credentials['token_url']
-        redirect_uri = credentials['redirect_uri']
+        client_id = credentials["client_id"]
+        client_secret = credentials["client_secret"]
+        token_url = credentials["token_url"]
+        redirect_uri = credentials["redirect_uri"]
 
         # Decrypt client secret if it's encrypted
         if len(client_secret) > 50:  # Simple heuristic: encrypted secrets are longer
             try:
-                from mcpgateway.utils.oauth_encryption import get_oauth_encryption
-                from mcpgateway.config import get_settings
                 settings = get_settings()
                 encryption = get_oauth_encryption(settings.auth_encryption_secret)
                 decrypted_secret = encryption.decrypt_secret(client_secret)
@@ -515,33 +440,29 @@ class OAuthManager:
 
         # Prepare token exchange data
         token_data = {
-            'grant_type': 'authorization_code',
-            'code': code,
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'client_secret': client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
 
         # Exchange code for token with retries
         for attempt in range(self.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        token_url,
-                        data=token_data,
-                        timeout=aiohttp.ClientTimeout(total=self.request_timeout)
-                    ) as response:
+                    async with session.post(token_url, data=token_data, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                         response.raise_for_status()
 
                         # GitHub returns form-encoded responses, not JSON
-                        content_type = response.headers.get('content-type', '')
-                        if 'application/x-www-form-urlencoded' in content_type:
+                        content_type = response.headers.get("content-type", "")
+                        if "application/x-www-form-urlencoded" in content_type:
                             # Parse form-encoded response
                             text_response = await response.text()
                             token_response = {}
-                            for pair in text_response.split('&'):
-                                if '=' in pair:
-                                    key, value = pair.split('=', 1)
+                            for pair in text_response.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
                                     token_response[key] = value
                         else:
                             # Try JSON response
@@ -551,32 +472,24 @@ class OAuthManager:
                                 logger.warning(f"Failed to parse JSON response: {e}")
                                 # Fallback to text parsing
                                 text_response = await response.text()
-                                token_response = {'raw_response': text_response}
+                                token_response = {"raw_response": text_response}
 
-                        if 'access_token' not in token_response:
-                            raise OAuthError(
-                                f"No access_token in response: {token_response}"
-                            )
+                        if "access_token" not in token_response:
+                            raise OAuthError(f"No access_token in response: {token_response}")
 
-                        logger.info(
-                            """Successfully exchanged authorization code for tokens"""
-                        )
+                        logger.info("""Successfully exchanged authorization code for tokens""")
                         return token_response
 
             except aiohttp.ClientError as e:
-                logger.warning(
-                    f"Token exchange attempt {attempt + 1} failed: {str(e)}"
-                )
+                logger.warning(f"Token exchange attempt {attempt + 1} failed: {str(e)}")
                 if attempt == self.max_retries - 1:
-                    raise OAuthError(
-                        f"Failed to exchange code for token after {self.max_retries} attempts: {str(e)}"
-                    )
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    raise OAuthError(f"Failed to exchange code for token after {self.max_retries} attempts: {str(e)}")
+                await asyncio.sleep(2**attempt)  # Exponential backoff
 
         # This should never be reached due to the exception above, but needed for type safety
         raise OAuthError("Failed to exchange code for token after all retry attempts")
 
-    def _extract_user_id(self, token_response: Dict[str, Any], credentials: Dict[str, Any]) -> str:
+    def _extract_user_id(self, token_response: Dict[str, Any], credentials: Dict[str, Any]) -> str:  # pylint: disable=unused-argument
         """Extract user ID from token response.
 
         Args:
@@ -599,4 +512,3 @@ class OAuthManager:
 
 class OAuthError(Exception):
     """OAuth-related errors."""
-    pass

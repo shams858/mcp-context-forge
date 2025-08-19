@@ -80,6 +80,7 @@ from mcpgateway.services.tag_service import TagService
 from mcpgateway.services.tool_service import ToolError, ToolNotFoundError, ToolService
 from mcpgateway.utils.create_jwt_token import get_jwt_token
 from mcpgateway.utils.error_formatter import ErrorFormatter
+from mcpgateway.utils.oauth_encryption import get_oauth_encryption
 from mcpgateway.utils.passthrough_headers import PassthroughHeadersError
 from mcpgateway.utils.retry_manager import ResilientHttpClient
 from mcpgateway.utils.security_cookies import set_auth_cookie
@@ -2632,7 +2633,6 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
                 oauth_config = json.loads(oauth_config_json)
                 # Encrypt the client secret if present
                 if oauth_config and "client_secret" in oauth_config:
-                    from mcpgateway.utils.oauth_encryption import get_oauth_encryption
                     encryption = get_oauth_encryption(settings.auth_encryption_secret)
                     oauth_config["client_secret"] = encryption.encrypt_secret(oauth_config["client_secret"])
             except (json.JSONDecodeError, ValueError) as e:
@@ -2680,7 +2680,7 @@ async def admin_add_gateway(request: Request, db: Session = Depends(get_db), use
 
         # Provide specific guidance for OAuth Authorization Code flow
         message = "Gateway registered successfully!"
-        if oauth_config and oauth_config.get('grant_type') == 'authorization_code':
+        if oauth_config and oauth_config.get("grant_type") == "authorization_code":
             message = (
                 "Gateway registered successfully! 🎉\n\n"
                 "⚠️  IMPORTANT: This gateway uses OAuth Authorization Code flow.\n"

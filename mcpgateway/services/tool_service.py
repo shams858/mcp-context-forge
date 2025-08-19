@@ -169,8 +169,8 @@ class ToolService:
         self._http_client = ResilientHttpClient(client_args={"timeout": settings.federation_timeout, "verify": not settings.skip_ssl_verify})
         self._plugin_manager: PluginManager | None = PluginManager() if settings.plugins_enabled else None
         self.oauth_manager = OAuthManager(
-            request_timeout=int(settings.oauth_request_timeout if hasattr(settings, 'oauth_request_timeout') else 30),
-            max_retries=int(settings.oauth_max_retries if hasattr(settings, 'oauth_max_retries') else 3)
+            request_timeout=int(settings.oauth_request_timeout if hasattr(settings, "oauth_request_timeout") else 30),
+            max_retries=int(settings.oauth_max_retries if hasattr(settings, "oauth_max_retries") else 3),
         )
 
     async def initialize(self) -> None:
@@ -712,7 +712,7 @@ class ToolService:
                 headers = tool.headers or {}
                 if tool.integration_type == "REST":
                     # Handle OAuth authentication for REST tools
-                    if tool.auth_type == "oauth" and hasattr(tool, 'oauth_config') and tool.oauth_config:
+                    if tool.auth_type == "oauth" and hasattr(tool, "oauth_config") and tool.oauth_config:
                         try:
                             access_token = await self.oauth_manager.get_access_token(tool.oauth_config)
                             headers["Authorization"] = f"Bearer {access_token}"
@@ -778,12 +778,14 @@ class ToolService:
 
                     # Handle OAuth authentication for the gateway
                     if gateway and gateway.auth_type == "oauth" and gateway.oauth_config:
-                        grant_type = gateway.oauth_config.get('grant_type', 'client_credentials')
+                        grant_type = gateway.oauth_config.get("grant_type", "client_credentials")
 
-                        if grant_type == 'authorization_code':
+                        if grant_type == "authorization_code":
                             # For Authorization Code flow, try to get stored tokens
                             try:
-                                from mcpgateway.services.token_storage_service import TokenStorageService
+                                # First-Party
+                                from mcpgateway.services.token_storage_service import TokenStorageService  # pylint: disable=import-outside-toplevel
+
                                 token_storage = TokenStorageService(db)
 
                                 # Try to get a valid token for any user (for now, we'll use a placeholder)
@@ -795,8 +797,7 @@ class ToolService:
                                 else:
                                     # No valid token available - user needs to complete OAuth flow
                                     raise ToolInvocationError(
-                                        f"OAuth Authorization Code flow requires user consent. "
-                                        f"Please complete the OAuth flow for gateway '{gateway.name}' before using tools."
+                                        f"OAuth Authorization Code flow requires user consent. " f"Please complete the OAuth flow for gateway '{gateway.name}' before using tools."
                                     )
                             except Exception as e:
                                 logger.error(f"Failed to obtain stored OAuth token for gateway {gateway.name}: {e}")

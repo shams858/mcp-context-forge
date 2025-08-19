@@ -5,15 +5,20 @@ This module handles the storage, retrieval, and management of OAuth access and r
 for Authorization Code flow implementations.
 """
 
-import logging
+# Standard
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+import logging
+from typing import Any, Dict, List, Optional
 
+# Third-Party
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+# First-Party
+from mcpgateway.config import get_settings
 from mcpgateway.db import OAuthToken
-from mcpgateway.utils.oauth_encryption import get_oauth_encryption
 from mcpgateway.services.oauth_manager import OAuthError
+from mcpgateway.utils.oauth_encryption import get_oauth_encryption
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +34,13 @@ class TokenStorageService:
         """
         self.db = db
         try:
-            from mcpgateway.config import get_settings
             settings = get_settings()
             self.encryption = get_oauth_encryption(settings.auth_encryption_secret)
         except (ImportError, AttributeError):
             logger.warning("OAuth encryption not available, using plain text storage")
             self.encryption = None
 
-    async def store_tokens(
-        self,
-        gateway_id: str,
-        user_id: str,
-        access_token: str,
-        refresh_token: Optional[str],
-        expires_in: int,
-        scopes: List[str]
-    ) -> OAuthToken:
+    async def store_tokens(self, gateway_id: str, user_id: str, access_token: str, refresh_token: Optional[str], expires_in: int, scopes: List[str]) -> OAuthToken:
         """Store OAuth tokens for a gateway-user combination.
 
         Args:
@@ -75,12 +71,7 @@ class TokenStorageService:
             expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
 
             # Create or update token record
-            token_record = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.gateway_id == gateway_id,
-                    OAuthToken.user_id == user_id
-                )
-            ).scalar_one_or_none()
+            token_record = self.db.execute(select(OAuthToken).where(OAuthToken.gateway_id == gateway_id, OAuthToken.user_id == user_id)).scalar_one_or_none()
 
             if token_record:
                 # Update existing record
@@ -92,14 +83,7 @@ class TokenStorageService:
                 logger.info(f"Updated OAuth tokens for gateway {gateway_id}, user {user_id}")
             else:
                 # Create new record
-                token_record = OAuthToken(
-                    gateway_id=gateway_id,
-                    user_id=user_id,
-                    access_token=encrypted_access,
-                    refresh_token=encrypted_refresh,
-                    expires_at=expires_at,
-                    scopes=scopes
-                )
+                token_record = OAuthToken(gateway_id=gateway_id, user_id=user_id, access_token=encrypted_access, refresh_token=encrypted_refresh, expires_at=expires_at, scopes=scopes)
                 self.db.add(token_record)
                 logger.info(f"Stored new OAuth tokens for gateway {gateway_id}, user {user_id}")
 
@@ -111,12 +95,7 @@ class TokenStorageService:
             logger.error(f"Failed to store OAuth tokens: {str(e)}")
             raise OAuthError(f"Token storage failed: {str(e)}")
 
-    async def get_valid_token(
-        self,
-        gateway_id: str,
-        user_id: str,
-        threshold_seconds: int = 300
-    ) -> Optional[str]:
+    async def get_valid_token(self, gateway_id: str, user_id: str, threshold_seconds: int = 300) -> Optional[str]:
         """Get a valid access token, refreshing if necessary.
 
         Args:
@@ -128,12 +107,7 @@ class TokenStorageService:
             Valid access token or None if no valid token available
         """
         try:
-            token_record = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.gateway_id == gateway_id,
-                    OAuthToken.user_id == user_id
-                )
-            ).scalar_one_or_none()
+            token_record = self.db.execute(select(OAuthToken).where(OAuthToken.gateway_id == gateway_id, OAuthToken.user_id == user_id)).scalar_one_or_none()
 
             if not token_record:
                 logger.debug(f"No OAuth tokens found for gateway {gateway_id}, user {user_id}")
@@ -152,18 +126,13 @@ class TokenStorageService:
             # Decrypt and return valid token
             if self.encryption:
                 return self.encryption.decrypt_secret(token_record.access_token)
-            else:
-                return token_record.access_token
+            return token_record.access_token
 
         except Exception as e:
             logger.error(f"Failed to retrieve OAuth token: {str(e)}")
             return None
 
-    async def get_any_valid_token(
-        self,
-        gateway_id: str,
-        threshold_seconds: int = 300
-    ) -> Optional[str]:
+    async def get_any_valid_token(self, gateway_id: str, threshold_seconds: int = 300) -> Optional[str]:
         """Get any valid access token for a gateway, regardless of user.
 
         Args:
@@ -175,11 +144,7 @@ class TokenStorageService:
         """
         try:
             # Get any token for this gateway
-            token_record = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.gateway_id == gateway_id
-                )
-            ).scalar_one_or_none()
+            token_record = self.db.execute(select(OAuthToken).where(OAuthToken.gateway_id == gateway_id)).scalar_one_or_none()
 
             if not token_record:
                 logger.debug(f"No OAuth tokens found for gateway {gateway_id}")
@@ -198,8 +163,7 @@ class TokenStorageService:
             # Decrypt and return valid token
             if self.encryption:
                 return self.encryption.decrypt_secret(token_record.access_token)
-            else:
-                return token_record.access_token
+            return token_record.access_token
 
         except Exception as e:
             logger.error(f"Failed to retrieve OAuth token: {str(e)}")
@@ -244,11 +208,7 @@ class TokenStorageService:
 
         return datetime.utcnow() + timedelta(seconds=threshold_seconds) >= token_record.expires_at
 
-    async def get_token_info(
-        self,
-        gateway_id: str,
-        user_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_token_info(self, gateway_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Get information about stored OAuth tokens.
 
         Args:
@@ -259,35 +219,26 @@ class TokenStorageService:
             Token information dictionary or None if not found
         """
         try:
-            token_record = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.gateway_id == gateway_id,
-                    OAuthToken.user_id == user_id
-                )
-            ).scalar_one_or_none()
+            token_record = self.db.execute(select(OAuthToken).where(OAuthToken.gateway_id == gateway_id, OAuthToken.user_id == user_id)).scalar_one_or_none()
 
             if not token_record:
                 return None
 
             return {
-                'user_id': token_record.user_id,
-                'token_type': token_record.token_type,
-                'expires_at': token_record.expires_at.isoformat() if token_record.expires_at else None,
-                'scopes': token_record.scopes,
-                'created_at': token_record.created_at.isoformat(),
-                'updated_at': token_record.updated_at.isoformat(),
-                'is_expired': self._is_token_expired(token_record, 0)
+                "user_id": token_record.user_id,
+                "token_type": token_record.token_type,
+                "expires_at": token_record.expires_at.isoformat() if token_record.expires_at else None,
+                "scopes": token_record.scopes,
+                "created_at": token_record.created_at.isoformat(),
+                "updated_at": token_record.updated_at.isoformat(),
+                "is_expired": self._is_token_expired(token_record, 0),
             }
 
         except Exception as e:
             logger.error(f"Failed to get token info: {str(e)}")
             return None
 
-    async def revoke_user_tokens(
-        self,
-        gateway_id: str,
-        user_id: str
-    ) -> bool:
+    async def revoke_user_tokens(self, gateway_id: str, user_id: str) -> bool:
         """Revoke OAuth tokens for a specific user.
 
         Args:
@@ -298,12 +249,7 @@ class TokenStorageService:
             True if tokens were revoked successfully
         """
         try:
-            token_record = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.gateway_id == gateway_id,
-                    OAuthToken.user_id == user_id
-                )
-            ).scalar_one_or_none()
+            token_record = self.db.execute(select(OAuthToken).where(OAuthToken.gateway_id == gateway_id, OAuthToken.user_id == user_id)).scalar_one_or_none()
 
             if token_record:
                 self.db.delete(token_record)
@@ -330,11 +276,7 @@ class TokenStorageService:
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
 
-            expired_tokens = self.db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.expires_at < cutoff_date
-                )
-            ).scalars().all()
+            expired_tokens = self.db.execute(select(OAuthToken).where(OAuthToken.expires_at < cutoff_date)).scalars().all()
 
             count = len(expired_tokens)
             for token in expired_tokens:

@@ -10,6 +10,7 @@ Create Date: 2024-12-20 11:00:00.000000
 # Standard
 from typing import Sequence, Union
 
+# Third-Party
 from alembic import op
 import sqlalchemy as sa
 
@@ -43,12 +44,10 @@ def upgrade() -> None:
         sa.Column("scopes", sa.JSON, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
-
         # Foreign key constraint
         sa.ForeignKeyConstraint(["gateway_id"], ["gateways.id"], ondelete="CASCADE"),
-
         # Unique constraint
-        sa.UniqueConstraint("gateway_id", "user_id", name="unique_gateway_user")
+        sa.UniqueConstraint("gateway_id", "user_id", name="unique_gateway_user"),
     )
 
     # Create indexes for efficient token lookup
