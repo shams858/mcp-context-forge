@@ -3207,12 +3207,20 @@ async function editGateway(gatewayId) {
         // OAuth fields
         const oauthGrantTypeField = safeGetElement("oauth-grant-type-gw-edit");
         const oauthClientIdField = safeGetElement("oauth-client-id-gw-edit");
-        const oauthClientSecretField = safeGetElement("oauth-client-secret-gw-edit");
+        const oauthClientSecretField = safeGetElement(
+            "oauth-client-secret-gw-edit",
+        );
         const oauthTokenUrlField = safeGetElement("oauth-token-url-gw-edit");
-        const oauthAuthUrlField = safeGetElement("oauth-authorization-url-gw-edit");
-        const oauthRedirectUriField = safeGetElement("oauth-redirect-uri-gw-edit");
+        const oauthAuthUrlField = safeGetElement(
+            "oauth-authorization-url-gw-edit",
+        );
+        const oauthRedirectUriField = safeGetElement(
+            "oauth-redirect-uri-gw-edit",
+        );
         const oauthScopesField = safeGetElement("oauth-scopes-gw-edit");
-        const oauthAuthCodeFields = safeGetElement("oauth-auth-code-fields-gw-edit");
+        const oauthAuthCodeFields = safeGetElement(
+            "oauth-auth-code-fields-gw-edit",
+        );
 
         // Hide all auth sections first
         if (authBasicSection) {
@@ -3271,7 +3279,9 @@ async function editGateway(gatewayId) {
                         // Show/hide authorization code fields based on grant type
                         if (oauthAuthCodeFields) {
                             oauthAuthCodeFields.style.display =
-                                config.grant_type === "authorization_code" ? "block" : "none";
+                                config.grant_type === "authorization_code"
+                                    ? "block"
+                                    : "none";
                         }
                     }
                     if (oauthClientIdField && config.client_id) {
@@ -3289,7 +3299,11 @@ async function editGateway(gatewayId) {
                     if (oauthRedirectUriField && config.redirect_uri) {
                         oauthRedirectUriField.value = config.redirect_uri;
                     }
-                    if (oauthScopesField && config.scopes && Array.isArray(config.scopes)) {
+                    if (
+                        oauthScopesField &&
+                        config.scopes &&
+                        Array.isArray(config.scopes)
+                    ) {
                         oauthScopesField.value = config.scopes.join(" ");
                     }
                 }
@@ -3716,7 +3730,9 @@ function handleAuthTypeSelection(
 
     // Hide all fields first
     [basicFields, bearerFields, headersFields].forEach((field) => {
-        if (field) field.style.display = "none";
+        if (field) {
+            field.style.display = "none";
+        }
     });
 
     // Hide OAuth fields if they exist
@@ -3727,10 +3743,14 @@ function handleAuthTypeSelection(
     // Show relevant field based on selection
     switch (value) {
         case "basic":
-            if (basicFields) basicFields.style.display = "block";
+            if (basicFields) {
+                basicFields.style.display = "block";
+            }
             break;
         case "bearer":
-            if (bearerFields) bearerFields.style.display = "block";
+            if (bearerFields) {
+                bearerFields.style.display = "block";
+            }
             break;
         case "authheaders": {
             if (headersFields) {
@@ -3748,7 +3768,9 @@ function handleAuthTypeSelection(
             break;
         }
         case "oauth":
-            if (oauthFields) oauthFields.style.display = "block";
+            if (oauthFields) {
+                oauthFields.style.display = "block";
+            }
             break;
         default:
             // All fields already hidden
