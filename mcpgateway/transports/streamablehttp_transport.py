@@ -746,8 +746,6 @@ async def streamable_http_auth(scope: Any, receive: Any, send: Any) -> bool:
     authorization = headers.get("authorization")
     proxy_user = headers.get(settings.proxy_user_header) if settings.trust_proxy_auth else None
 
-    print(f"authorization: {authorization}, proxy_user: {proxy_user}")
-    print(f"settings.mcp_client_auth_enabled: {settings.mcp_client_auth_enabled}, settings.trust_proxy_auth: {settings.trust_proxy_auth}")
     # Determine authentication strategy based on settings
     if not settings.mcp_client_auth_enabled and settings.trust_proxy_auth:
         # Client auth disabled → allow proxy header
