@@ -1080,11 +1080,17 @@ class GatewayService:  # pylint: disable=too-many-instance-attributes
                     # Support multiple custom headers on update
                     if hasattr(gateway_update, "auth_headers") and gateway_update.auth_headers:
                         header_dict = {h["key"]: h["value"] for h in gateway_update.auth_headers if h.get("key")}
-                        gateway.auth_value = header_dict  # Store as dict for DB JSON field
+                        gateway.auth_value = encode_auth(header_dict)  # Encode dict for DB Text field
                     elif settings.masked_auth_value not in (token, password, header_value):
                         # Check if values differ from existing ones
                         if gateway.auth_value != gateway_update.auth_value:
-                            gateway.auth_value = decode_auth(gateway_update.auth_value) if isinstance(gateway_update.auth_value, str) else gateway_update.auth_value
+                            # Ensure we always store as encoded string
+                            if isinstance(gateway_update.auth_value, str):
+                                gateway.auth_value = gateway_update.auth_value  # Already encoded
+                            elif isinstance(gateway_update.auth_value, dict):
+                                gateway.auth_value = encode_auth(gateway_update.auth_value)  # Encode dict
+                            else:
+                                gateway.auth_value = gateway_update.auth_value
 
                 # Try to reinitialize connection if URL changed
                 if gateway_update.url is not None:

@@ -431,6 +431,13 @@
             "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
           textColor: "text-white",
         },
+        "entra-auth": {
+          name: "Entra Authentication",
+          icon: "fab fa-microsoft",
+          bgColor:
+            "bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800",
+          textColor: "text-white",
+        },
       };
 
       // Initialize page
@@ -465,16 +472,24 @@
 
           providers.forEach((provider) => {
             const config = ssoProviders[provider.id];
-            if (!config) return;
+
+            // Use predefined config if available, otherwise use defaults
+            const providerConfig = config || {
+              name: provider.display_name,
+              icon: "fas fa-sign-in-alt", // Generic login icon
+              bgColor: "bg-gray-600 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-800",
+              textColor: "text-white",
+              border: ""
+            };
 
             const button = document.createElement("button");
             button.type = "button";
             button.onclick = () => initiateSSO(provider.id);
-            button.className = `w-full flex justify-center items-center py-3 px-4 rounded-xl font-medium transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${config.bgColor} ${config.textColor} ${config.border || ""}`;
+            button.className = `w-full flex justify-center items-center py-3 px-4 rounded-xl font-medium transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${providerConfig.bgColor} ${providerConfig.textColor} ${providerConfig.border || ""}`;
 
             button.innerHTML = `
-                    <i class="${config.icon} mr-3 text-lg"></i>
-                    Continue with ${config.name}
+                    <i class="${providerConfig.icon} mr-3 text-lg"></i>
+                    Continue with ${providerConfig.name}
                     <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-200"></i>
                 `;
 

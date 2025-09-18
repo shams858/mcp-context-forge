@@ -223,6 +223,8 @@ def require_permission(permission: str, resource_type: Optional[str] = None):
                 user_agent=user_context.get("user_agent"),
             )
 
+            print(f"Permission check: user={user_context['email']}, permission={permission}, resource_type={resource_type}, granted={granted}")
+
             if not granted:
                 logger.warning(f"Permission denied: user={user_context['email']}, permission={permission}, resource_type={resource_type}")
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Insufficient permissions. Required: {permission}")
